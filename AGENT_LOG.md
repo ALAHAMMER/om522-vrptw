@@ -1,5 +1,7 @@
 # Agent-drafted components and what we checked
 
+Later additions from Codex are documented separately in [docs/CODEX_CHANGES.md](docs/CODEX_CHANGES.md). The historical component table below describes Claude drafts and earlier fixes; it should not be attributed to this Codex implementation pass.
+
 The project guide requires each member to walk through one component that a coding agent drafted,
 covering what it does, one thing that was wrong or unclear in the agent's version, and how the team
 checked it. A different component is needed for the prototype and the final video. Every item below
@@ -24,3 +26,11 @@ Suggested split: each member takes one row for the prototype and a different one
 ## Other observations worth mentioning
 - One timing run on a 60-customer proxy took 170 s instead of ~5 s. Rerunning gave the identical answer in 4 s, so the cause was the machine (sleep or contention), not the algorithm. This is why the iteration count is the stopping rule and the 480 s time cap is only a safety net.
 - Tools used: Claude Code (Claude Opus 5.5) for research, drafting code and tests, profiling, and debugging. The team reviewed every component and can explain it.
+
+## Codex review and additions — October 29, 2026
+
+Codex independently reviewed the existing implementation, ran separate block-removal and route-pool experiments, and added fresh paired traffic evaluations. The experiments improved nominal large-instance travel but increased late events under the tested traffic model, so the existing LNS remains the recommended prototype solver.
+
+Inside the deliverable repository, Codex added `scripts/prototype_demo.py`, the `prototype-demo` Pixi task, beginner presentation/change guides, and README links. The original solver modules, supplied inputs, defaults, dependencies, lockfile, and original results were preserved. The experiment code is kept outside this repository. The presentation (since redesigned) is in `presentation/`.
+
+All 37 original project tests and both demo modes passed. Codex ran them with the project's Python directly because Pixi crashed in its sandbox; they were later confirmed through `pixi run` in a normal terminal, and a clean `pixi install` from a fresh clone also worked. Team members still need to personally rehearse and confirm their review; Codex has not performed that team activity on their behalf.

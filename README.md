@@ -10,6 +10,48 @@
 > vehicles cost nothing, and the plan minimizes travel time only (vehicles used is reported as the
 > secondary measure, not optimized).
 
+## Where is everything?
+
+```
+om522-vrptw/
+├── src/vrptw/         ★ THE CODE: the route planner itself (start here)
+│   ├── rule.py            Method 1: the rule to beat
+│   ├── lns.py             Method 2: the researched method (large neighborhood search)
+│   ├── checker.py         Independent checker: verifies any plan from scratch
+│   ├── instance.py        Reads the input CSVs and runs the 4 input checks
+│   ├── decision.py        Writes decision.json and summary.json
+│   ├── cli.py             The "pixi run solve" command that ties the above together
+│   ├── stress.py          Stress test (30 traffic scenarios)
+│   └── crossings.py       Extra: where routes cross on the map
+├── tests/             Automated tests            → pixi run test
+├── scripts/           Builds every result table/plot → pixi run compare
+│                      (also prototype_demo.py       → pixi run prototype-demo)
+├── notebooks/         Interactive screens (video walkthrough) → pixi run walkthrough
+├── results/           Output of pixi run compare (start with RESULTS.md)
+├── data/option_03/    Input data from the instructor (never edited)
+├── docs/              Prototype recording guide and the note on what Codex changed
+├── presentation/      Prototype slide deck and speaker notes (start with START_HERE.md)
+├── review/            The independent code review whose findings were all fixed
+├── AGENT_LOG.md       Parts the AI drafted, what was wrong, and how we checked them
+├── pixi.toml          The list of commands and packages (pixi.lock pins exact versions)
+└── README.md          This file
+```
+
+Each folder has its own short `README.md` explaining its files. `src/vrptw/README.md` also gives
+the order to read the code in.
+
+| I want to... | Look at |
+|---|---|
+| See how the rule to beat works | `src/vrptw/rule.py` (46 lines) |
+| See how the researched method works | `src/vrptw/lns.py`, guided by `src/vrptw/README.md` |
+| See how a plan is checked | `src/vrptw/checker.py` |
+| See what makes input "malformed" | `load_instance` in `src/vrptw/instance.py` |
+| See the three required tests | `tests/test_required.py` (the first three tests in `tests/README.md`) |
+| See the results | `results/RESULTS.md`, or the Results section below |
+| Pick a component for the video walk-through | `AGENT_LOG.md`, and the suggested split in `docs/PROTOTYPE_GUIDE.md` |
+| Plan the prototype recording | `presentation/START_HERE.md`, then `docs/PROTOTYPE_GUIDE.md` |
+| Add or change a `pixi run ...` command | `pixi.toml`, under `[tasks]` |
+
 ## Quick start
 
 ```bash
@@ -21,7 +63,12 @@ pixi run check data/option_03/development_medium out/medium/decision.json   # in
 pixi run compare                                                # regenerate every table and plot in results/
 pixi run explore                                                # optional marimo interface
 pixi run walkthrough                                            # the screen we record the videos from
+pixi run prototype-demo                                         # prototype recording: fresh copy, both methods, checker, comparison
+pixi run prototype-demo --checks-only                           # rehearsal: malformed inputs, edge case, worked example, tests
 ```
+
+`prototype-demo` writes only under `out/prototype_demo/` and never changes the supplied inputs or
+`results/`. [docs/PROTOTYPE_GUIDE.md](docs/PROTOTYPE_GUIDE.md) explains how to use it in the recording.
 
 `solve` takes an input directory and an output directory. It writes `decision.json` (the structure of
 `worked-example/solution.json`) and `summary.json` (run status, seed, stopping reason, runtime, and the measures: total travel time,
@@ -41,31 +88,6 @@ decision behind. Both files are written to a temporary name and then renamed, `d
 Options: `--method lns|rule`, `--seed` (default 522), `--iterations` (default 8000, zero or more),
 `--restarts` (independent runs, default 1, at least 1), and `--time-cap` (safety cap in seconds,
 default 480, finite and zero or more). Invalid settings are rejected with exit status 2.
-
-## Repository layout
-
-| Path | Contents |
-|---|---|
-| `src/vrptw/instance.py` | Loader, the four input checks, integer-indexed instance, route schedule and feasibility |
-| `src/vrptw/rule.py` | Method 1: the rule to beat |
-| `src/vrptw/lns.py` | Method 2: the researched method (large neighborhood search) |
-| `src/vrptw/checker.py` | Independent checker (standard library only, imports no solver code) |
-| `src/vrptw/decision.py` | decision.json, summary measures, output writing |
-| `src/vrptw/stress.py` | Scenario generation and fixed-plan execution |
-| `src/vrptw/crossings.py` | Finds where routes cross on the map and tests whether each crossing could be removed |
-| `src/vrptw/cli.py` | The `solve` command |
-| `scripts/compare.py` | Regenerates every comparison table, stress result, proxy result, map, plot, and management scenario |
-| `scripts/scenarios.py` | Management scenarios (cushion and spare-capacity plans); `compare` runs it last, `pixi run scenarios` reruns only it |
-| `scripts/scenario_explorer.html` | Template for the interactive scenario page written to `results/scenarios/` |
-| `scripts/gurobi_benchmark.py` | Optional Gurobi optimality benchmark (separate environment, not graded) |
-| `tests/test_required.py` | The three required tests plus extra checks |
-| `tests/test_review_fixes.py` | Regression tests for every issue found in the independent review |
-| `notebooks/explore.py` | marimo interface: run both methods, maps, vehicle timelines, convergence |
-| `notebooks/walkthrough.py` | Video walkthrough: ingestion, the rule, the checker, the LNS, and the stress test written out cell by cell, each checked against `src/`; runs the documented commands on a fresh copy |
-| `data/option_03/` | Supplied instances (never modified) |
-| `results/` | Generated tables (`RESULTS.md`, CSVs), decisions, scenarios, and plots |
-| `AGENT_LOG.md` | Agent-drafted components, what was wrong, and how each was checked |
-| `review/REVIEW_PLAN.md` | The independent code review (2026-10-15) whose findings were all fixed |
 
 ## Method 1: rule to beat (nearest feasible neighbor)
 
@@ -268,6 +290,9 @@ violation, down to 12), at a cost of 20 planned minutes. If late deliveries are 
 - Built with **Claude Code (Claude Opus 5.5)** for researching methods, drafting code and tests,
   profiling, and debugging. `AGENT_LOG.md` lists what was wrong in the agent drafts and how it was
   checked. **TEAM: confirm this sentence before submitting:** every component was reviewed by the team.
+- **Codex** independently reviewed the project, ran algorithm experiments that were not adopted,
+  and wrote `scripts/prototype_demo.py` and the guides in `docs/`. It did not change the solver,
+  checker, data, or results. `docs/CODEX_CHANGES.md` lists what it added.
 - An independent AI code review (Sol 6.1, `review/REVIEW_PLAN.md`) found eight issues and ten smaller
   ones. All were fixed and covered by tests (`AGENT_LOG.md`, row 10).
 - No code was copied from the OM 522 in-class notebooks. The solver ideas (Nearest Neighbor, subsequence
