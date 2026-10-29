@@ -1,0 +1,11 @@
+{
+  "method": "Gurobi MIP benchmark (not a graded method)",
+  "status": "optimal",
+  "total_travel_time": 1040.6779999999999,
+  "vehicles_used": 8,
+  "waiting_time": 2236.7509999999997,
+  "customers_served": 45,
+  "seconds": 97.27957020001486,
+  "best_bound": 1040.6779999999999,
+  "mip_gap": 0.0
+}

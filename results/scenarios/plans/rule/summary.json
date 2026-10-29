@@ -1,0 +1,9 @@
+{
+  "plan": "rule",
+  "total_travel_time": 1683.397,
+  "vehicles_used": 11,
+  "waiting_time": 2199.093,
+  "service_time": 550.0,
+  "route_duration": 4432.49,
+  "customers_served": 45
+}

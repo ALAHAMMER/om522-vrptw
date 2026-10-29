@@ -1,0 +1,9 @@
+{
+  "plan": "buffer_30",
+  "total_travel_time": 1083.051,
+  "vehicles_used": 8,
+  "waiting_time": 2258.9210000000003,
+  "service_time": 550.0,
+  "route_duration": 3891.972,
+  "customers_served": 45
+}

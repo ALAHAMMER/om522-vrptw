@@ -1,0 +1,9 @@
+{
+  "plan": "spare_cap",
+  "total_travel_time": 1092.362,
+  "vehicles_used": 9,
+  "waiting_time": 2574.483,
+  "service_time": 550.0,
+  "route_duration": 4216.845,
+  "customers_served": 45
+}

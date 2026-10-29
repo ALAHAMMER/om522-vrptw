@@ -1,0 +1,551 @@
+<title>Dispatch Plan Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a dispatch console. Decide (cost model + ranking) first, then inspect one plan (map + truck timeline), then the full table. */
+:root {
+  --bg: #f3f5f7;
+  --panel: #ffffff;
+  --ink: #111820;
+  --ink-2: #4a5462;
+  --muted: #6f7988;
+  --line: #dbe1e8;
+  --accent: #2a78d6;
+  --accent-soft: #e3eefb;
+  --rule: #eb6834;
+  --good: #0f7a48;
+  --warn: #a85d00;
+  --drive: #8d97a6;
+  --wait: #d5dbe3;
+  --c-truck: #2a78d6; --c-driver: #1baf7a; --c-travel: #eda100; --c-late: #6250d6;
+  --r1: #2a78d6; --r2: #eb6834; --r3: #1baf7a; --r4: #eda100; --r5: #e87ba4; --r6: #008300; --r7: #6250d6; --r8: #e34948;
+  --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "Barlow", "Segoe UI", Arial, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161b; --panel: #1a2027; --ink: #eef1f4; --ink-2: #b9c1cc; --muted: #8d97a5; --line: #2c343e;
+    --accent: #3987e5; --accent-soft: #1d2d42; --rule: #d95926; --good: #3fbf82; --warn: #e0a040;
+    --drive: #6c7685; --wait: #323b46;
+    --c-truck: #3987e5; --c-driver: #199e70; --c-travel: #c98500; --c-late: #9085e9;
+    --r1: #3987e5; --r2: #d95926; --r3: #199e70; --r4: #c98500; --r5: #d55181; --r6: #008300; --r7: #9085e9; --r8: #e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161b; --panel: #1a2027; --ink: #eef1f4; --ink-2: #b9c1cc; --muted: #8d97a5; --line: #2c343e;
+  --accent: #3987e5; --accent-soft: #1d2d42; --rule: #d95926; --good: #3fbf82; --warn: #e0a040;
+  --drive: #6c7685; --wait: #323b46;
+  --c-truck: #3987e5; --c-driver: #199e70; --c-travel: #c98500; --c-late: #9085e9;
+  --r1: #3987e5; --r2: #d95926; --r3: #199e70; --r4: #c98500; --r5: #d55181; --r6: #008300; --r7: #9085e9; --r8: #e66767;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: 0.01em; }
+h1 { font-size: clamp(2rem, 5vw, 2.9rem); line-height: 1.05; }
+h2 { font-size: 1.55rem; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.lede { max-width: 68ch; color: var(--ink-2); font-size: 1.05rem; }
+header { display: grid; gap: 10px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0; }
+section { display: grid; gap: 14px; }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Decide */
+.decide { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 16px; }
+.controls { display: grid; gap: 16px; align-content: start; }
+.control { display: grid; gap: 4px; }
+.control label { display: flex; justify-content: space-between; gap: 8px; font-weight: 500; font-size: 0.92rem; }
+.control output { font-family: var(--mono); color: var(--accent); font-size: 0.88rem; }
+.control .hint { font-size: 0.8rem; color: var(--muted); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 0.85rem; padding: 7px 6px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.seg button:focus-visible, .chip:focus-visible, .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reset { font: inherit; font-size: 0.82rem; justify-self: start; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; color: var(--ink-2); cursor: pointer; }
+
+.ranking { display: grid; gap: 14px; align-content: start; }
+.verdict { display: grid; gap: 6px; padding: 14px 16px; border-radius: 8px; background: var(--accent-soft); }
+.verdict strong { font-family: var(--display); font-size: 1.35rem; font-weight: 600; }
+.verdict p { color: var(--ink-2); font-size: 0.93rem; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.82rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.bars { display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) 84px; gap: 10px; align-items: center; cursor: pointer; border-radius: 6px; padding: 3px 4px; }
+.bar-row:hover, .bar-row.selected { background: var(--accent-soft); }
+.bar-row.dim { opacity: 0.45; }
+.bar-label { font-size: 0.9rem; font-weight: 500; line-height: 1.2; }
+.bar-label small { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+.bar-track { display: flex; gap: 2px; height: 20px; min-width: 0; }
+.bar-track div { height: 100%; }
+.bar-track div:first-child { border-radius: 4px 0 0 4px; }
+.bar-track div:last-child { border-radius: 0 4px 4px 0; }
+.bar-total { font-family: var(--mono); font-size: 0.86rem; text-align: right; }
+.badge { display: inline-block; font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; margin-top: 2px; }
+.badge.best { background: var(--good); color: #fff; }
+.badge.fail { border: 1px solid var(--warn); color: var(--warn); }
+
+/* Plan detail */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 0.86rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; }
+.map-box svg { width: 100%; height: auto; display: block; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; }
+.kpi .k { font-size: 0.78rem; color: var(--muted); }
+.kpi .v { font-family: var(--mono); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.kpi .d { font-family: var(--mono); font-size: 0.74rem; }
+.d.up { color: var(--good); } .d.down { color: var(--warn); } .d.same { color: var(--muted); }
+.plan-desc { color: var(--ink-2); font-size: 0.93rem; }
+.timeline-box { overflow-x: auto; }
+.timeline-box svg { display: block; min-width: 560px; width: 100%; height: auto; }
+.tl-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; color: var(--ink-2); }
+.tl-legend span { display: inline-flex; gap: 6px; align-items: center; }
+.tl-legend i { width: 14px; height: 10px; display: inline-block; border-radius: 2px; }
+
+/* Table */
+.table-box { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-family: var(--display); font-weight: 600; font-size: 0.95rem; color: var(--ink-2); vertical-align: bottom; white-space: normal; min-width: 84px; }
+td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.best { font-weight: 600; color: var(--good); }
+tbody tr:hover { background: var(--accent-soft); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.notes p, .notes li { font-size: 0.9rem; color: var(--ink-2); }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 0.8rem; line-height: 1.4; padding: 8px 10px; border-radius: 6px; max-width: 260px; }
+#tip b { font-family: var(--mono); font-weight: 500; }
+
+@media (max-width: 860px) {
+  .decide, .detail { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .bar-row { grid-template-columns: 96px minmax(0, 1fr) 70px; gap: 6px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar-track div { transition: width 0.25s ease; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">OM 522 · Option 3 · development_medium · 45 customers · 18 trucks of 60 units</span>
+    <h1>Dispatch Plan Explorer</h1>
+    <p class="lede">Seven ways to run one day of deliveries. Every plan serves all 45 customers inside their windows and passed the independent checker. They differ in miles, trucks, driver hours and how well they survive traffic. Set what each of those costs you and the page ranks the plans.</p>
+  </header>
+
+  <section aria-labelledby="decide-h">
+    <div class="section-head">
+      <h2 id="decide-h">Which plan should we run?</h2>
+      <span class="eyebrow">Expected cost per delivery day</span>
+    </div>
+    <div class="decide">
+      <div class="panel controls">
+        <div class="control">
+          <label for="c-truck">Truck, per day used <output id="o-truck"></output></label>
+          <input type="range" id="c-truck" min="0" max="400" step="10" value="150">
+          <span class="hint">Lease, insurance and loading for each truck that leaves the depot.</span>
+        </div>
+        <div class="control">
+          <label for="c-driver">Driver, per hour <output id="o-driver"></output></label>
+          <input type="range" id="c-driver" min="15" max="60" step="1" value="30">
+        </div>
+        <div class="control">
+          <label for="c-travel">Fuel and wear, per travel minute <output id="o-travel"></output></label>
+          <input type="range" id="c-travel" min="0" max="3" step="0.05" value="0.9">
+        </div>
+        <div class="control">
+          <label for="c-late">Each late delivery or late return <output id="o-late"></output></label>
+          <input type="range" id="c-late" min="0" max="500" step="5" value="75">
+          <span class="hint">Refund, re-delivery, overtime, lost goodwill.</span>
+        </div>
+        <div class="control">
+          <label for="c-floor">Require trouble-free days <output id="o-floor"></output></label>
+          <input type="range" id="c-floor" min="0" max="30" step="1" value="0">
+          <span class="hint">Plans with fewer of the 30 simulated days free of any late stop are ruled out.</span>
+        </div>
+        <div class="control">
+          <span id="cong-l" style="font-weight:500;font-size:0.92rem">Traffic in the simulation</span>
+          <div class="seg" role="group" aria-labelledby="cong-l">
+            <button id="cong-base" aria-pressed="true">Normal days</button>
+            <button id="cong-heavy" aria-pressed="false">Heavy congestion</button>
+          </div>
+        </div>
+        <div class="control">
+          <span id="clock-l" style="font-weight:500;font-size:0.92rem">Driver clock starts</span>
+          <div class="seg" role="group" aria-labelledby="clock-l">
+            <button id="clock-shift" aria-pressed="true">At shift start</button>
+            <button id="clock-jit" aria-pressed="false">Just in time</button>
+          </div>
+          <span class="hint">Just in time: a driver leaves late enough to skip the wait at the first stop. No delivery time changes.</span>
+        </div>
+        <button class="reset" id="reset">Reset to example costs</button>
+      </div>
+
+      <div class="panel ranking">
+        <div class="verdict" id="verdict" aria-live="polite"></div>
+        <div class="legend" aria-hidden="true">
+          <span><i style="background:var(--c-truck)"></i>Trucks</span>
+          <span><i style="background:var(--c-driver)"></i>Driver hours</span>
+          <span><i style="background:var(--c-travel)"></i>Fuel and wear</span>
+          <span><i style="background:var(--c-late)"></i>Late events</span>
+        </div>
+        <div class="bars" id="bars"></div>
+        <p class="eyebrow" style="text-transform:none;letter-spacing:0">Costs are example figures for discussion, not company data. Travel and late events are averages over the 30 simulated days.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="plan-h">
+    <div class="section-head">
+      <h2 id="plan-h">Inspect a plan</h2>
+      <span class="eyebrow">Compared with today's rule</span>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Plan"></div>
+    <div class="detail">
+      <div class="panel map-box">
+        <h3 id="map-title"></h3>
+        <svg id="map" viewBox="-4 -4 108 108" role="img" aria-label="Route map"></svg>
+        <p class="eyebrow" style="text-transform:none;letter-spacing:0">Square = depot. Hover a stop for its window and planned start.</p>
+      </div>
+      <div class="panel" style="display:grid;gap:14px;align-content:start">
+        <p class="plan-desc" id="plan-desc"></p>
+        <div class="kpis" id="kpis"></div>
+        <h3>Truck day, minute 0 to 600</h3>
+        <div class="tl-legend" aria-hidden="true">
+          <span><i style="background:var(--drive)"></i>Driving</span>
+          <span><i style="background:var(--wait)"></i>Waiting for a window</span>
+          <span><i style="background:linear-gradient(90deg,var(--r1) 33%,var(--r2) 33% 66%,var(--r3) 66%)"></i>Serving (truck's map color)</span>
+          <span><i style="border:1px solid var(--ink-2);height:6px"></i>Customer's window</span>
+        </div>
+        <div class="timeline-box"><svg id="timeline" role="img" aria-label="Truck timelines"></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="table-h">
+    <h2 id="table-h">Every plan, every measure</h2>
+    <div class="panel table-box"><table id="table"></table></div>
+  </section>
+
+  <section aria-labelledby="notes-h">
+    <h2 id="notes-h">How these plans were made</h2>
+    <div class="notes">
+      <div class="panel"><h3>One method, different targets</h3><p>Every plan except today's rule comes from the same large neighborhood search. For the cushion plans the planner was told every window closes 10, 20 or 30 minutes early. For spare capacity it was told trucks hold 51 units instead of 60. The checker then scored each plan against the real windows and capacity.</p></div>
+      <div class="panel"><h3>The traffic test</h3><p>Thirty saved days of random travel times: a city-wide congestion factor (mean 1.0, CV 0.2) times road-level noise (CV 0.1). Heavy congestion uses mean 1.15, CV 0.3. Each plan is driven exactly as written, and any service that starts after its window, or any truck back after its shift, is a late event.</p></div>
+      <div class="panel"><h3>What the data rule out</h3><ul><li>Fewer than 8 trucks: the 45 orders total 422 units and a truck holds 60.</li><li>A 9-hour day: customer C039 opens at minute 500, so its truck cannot be back before minute 560.</li><li>The fewest-miles plan is proven optimal for travel by an exact Gurobi model.</li></ul></div>
+    </div>
+  </section>
+</div>
+<div id="tip" hidden></div>
+
+<script id="plan-data" type="application/json">{"instance": "development_medium", "fleet_size": 18, "nodes": [{"id": "DEPOT", "x": 50.0, "y": 50.0, "ws": null, "we": null, "demand": 0, "service": 0.0}, {"id": "C001", "x": 12.52, "y": 25.42, "ws": 454.0, "we": 536.0, "demand": 14, "service": 15.0}, {"id": "C002", "x": 54.49, "y": 88.54, "ws": 352.0, "we": 481.0, "demand": 11, "service": 10.0}, {"id": "C003", "x": 93.42, "y": 97.59, "ws": 281.0, "we": 447.0, "demand": 6, "service": 10.0}, {"id": "C004", "x": 31.63, "y": 72.88, "ws": 123.0, "we": 223.0, "demand": 5, "service": 10.0}, {"id": "C005", "x": 92.05, "y": 19.05, "ws": 372.0, "we": 431.0, "demand": 12, "service": 16.0}, {"id": "C006", "x": 44.25, "y": 57.87, "ws": 250.0, "we": 394.0, "demand": 13, "service": 20.0}, {"id": "C007", "x": 36.97, "y": 47.95, "ws": 130.0, "we": 277.0, "demand": 9, "service": 17.0}, {"id": "C008", "x": 72.07, "y": 24.4, "ws": 315.0, "we": 451.0, "demand": 12, "service": 17.0}, {"id": "C009", "x": 91.69, "y": 51.15, "ws": 121.0, "we": 153.0, "demand": 11, "service": 10.0}, {"id": "C010", "x": 42.27, "y": 75.75, "ws": 244.0, "we": 363.0, "demand": 14, "service": 20.0}, {"id": "C011", "x": 45.9, "y": 27.62, "ws": 433.0, "we": 570.0, "demand": 7, "service": 7.0}, {"id": "C012", "x": 69.66, "y": 48.19, "ws": 502.0, "we": 562.0, "demand": 11, "service": 18.0}, {"id": "C013", "x": 25.69, "y": 28.08, "ws": 263.0, "we": 348.0, "demand": 11, "service": 8.0}, {"id": "C014", "x": 39.58, "y": 26.04, "ws": 400.0, "we": 435.0, "demand": 13, "service": 15.0}, {"id": "C015", "x": 33.73, "y": 55.37, "ws": 307.0, "we": 374.0, "demand": 11, "service": 7.0}, {"id": "C016", "x": 3.35, "y": 40.37, "ws": 283.0, "we": 352.0, "demand": 9, "service": 17.0}, {"id": "C017", "x": 0.76, "y": 97.07, "ws": 22.0, "we": 99.0, "demand": 5, "service": 14.0}, {"id": "C018", "x": 28.94, "y": 85.44, "ws": 156.0, "we": 233.0, "demand": 3, "service": 11.0}, {"id": "C019", "x": 72.78, "y": 42.29, "ws": 142.0, "we": 250.0, "demand": 13, "service": 11.0}, {"id": "C020", "x": 33.06, "y": 36.87, "ws": 443.0, "we": 479.0, "demand": 15, "service": 10.0}, {"id": "C021", "x": 7.2, "y": 42.35, "ws": 455.0, "we": 520.0, "demand": 10, "service": 10.0}, {"id": "C022", "x": 80.99, "y": 78.96, "ws": 293.0, "we": 325.0, "demand": 4, "service": 9.0}, {"id": "C023", "x": 60.88, "y": 69.33, "ws": 225.0, "we": 297.0, "demand": 11, "service": 20.0}, {"id": "C024", "x": 18.46, "y": 62.82, "ws": 268.0, "we": 339.0, "demand": 11, "service": 11.0}, {"id": "C025", "x": 88.48, "y": 54.86, "ws": 276.0, "we": 344.0, "demand": 12, "service": 12.0}, {"id": "C026", "x": 97.42, "y": 19.95, "ws": 313.0, "we": 386.0, "demand": 7, "service": 19.0}, {"id": "C027", "x": 34.62, "y": 17.44, "ws": 205.0, "we": 366.0, "demand": 13, "service": 6.0}, {"id": "C028", "x": 34.68, "y": 15.99, "ws": 373.0, "we": 450.0, "demand": 4, "service": 9.0}, {"id": "C029", "x": 59.53, "y": 84.77, "ws": 258.0, "we": 325.0, "demand": 11, "service": 11.0}, {"id": "C030", "x": 18.66, "y": 58.78, "ws": 145.0, "we": 271.0, "demand": 3, "service": 9.0}, {"id": "C031", "x": 53.52, "y": 32.78, "ws": 266.0, "we": 350.0, "demand": 13, "service": 5.0}, {"id": "C032", "x": 82.16, "y": 32.03, "ws": 150.0, "we": 273.0, "demand": 8, "service": 12.0}, {"id": "C033", "x": 48.02, "y": 71.23, "ws": 363.0, "we": 450.0, "demand": 11, "service": 8.0}, {"id": "C034", "x": 0.33, "y": 72.2, "ws": 316.0, "we": 410.0, "demand": 3, "service": 12.0}, {"id": "C035", "x": 64.81, "y": 20.5, "ws": 222.0, "we": 292.0, "demand": 6, "service": 16.0}, {"id": "C036", "x": 73.27, "y": 63.32, "ws": 154.0, "we": 258.0, "demand": 4, "service": 15.0}, {"id": "C037", "x": 27.35, "y": 37.34, "ws": 454.0, "we": 554.0, "demand": 11, "service": 20.0}, {"id": "C038", "x": 72.81, "y": 7.89, "ws": 357.0, "we": 460.0, "demand": 7, "service": 8.0}, {"id": "C039", "x": 87.03, "y": 29.43, "ws": 500.0, "we": 539.0, "demand": 12, "service": 18.0}, {"id": "C040", "x": 16.72, "y": 50.22, "ws": 329.0, "we": 498.0, "demand": 8, "service": 9.0}, {"id": "C041", "x": 34.53, "y": 15.74, "ws": 243.0, "we": 336.0, "demand": 11, "service": 6.0}, {"id": "C042", "x": 29.1, "y": 6.5, "ws": 54.0, "we": 133.0, "demand": 14, "service": 5.0}, {"id": "C043", "x": 72.07, "y": 28.01, "ws": 127.0, "we": 283.0, "demand": 9, "service": 11.0}, {"id": "C044", "x": 40.82, "y": 57.63, "ws": 391.0, "we": 501.0, "demand": 6, "service": 15.0}, {"id": "C045", "x": 89.54, "y": 18.65, "ws": 167.0, "we": 220.0, "demand": 8, "service": 11.0}], "vehicles": {"V01": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V02": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V03": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V04": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V05": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V06": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V07": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V08": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V09": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V10": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V11": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V12": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V13": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V14": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V15": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V16": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V17": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}, "V18": {"capacity": 60, "shift_start": 0.0, "shift_end": 600.0}}, "plans": [{"plan": "rule", "label": "Today's rule", "description": "Nearest feasible neighbour, one truck at a time", "total_travel_time": 1683.397, "vehicles_used": 11, "waiting_time": 2199.093, "service_time": 550.0, "route_duration": 4432.49, "customers_served": 45, "driver_hours": 73.87483333333333, "driver_hours_jit": 50.1894, "longest_day_hours": 9.686316666666666, "shortest_day_hours": 1.7876666666666665, "min_slack": 8.009999999999991, "p10_slack": 21.09659999999999, "mean_slack": 66.77964444444444, "avg_load_pct": 63.93939393939394, "max_load_pct": 100.0, "stops_per_truck": 4.090909090909091, "base_travel_mean": 1819.3092883699312, "base_travel_p90": 2267.0539417036825, "base_clean_days": 19, "base_late_starts": 28, "base_late_returns": 14, "base_clean_day_pct": 63.333333333333336, "base_on_time_pct": 97.92592592592592, "heavy_congestion_travel_mean": 2162.4783890677913, "heavy_congestion_travel_p90": 2975.1749575347076, "heavy_congestion_clean_days": 12, "heavy_congestion_late_starts": 99, "heavy_congestion_late_returns": 39, "heavy_congestion_clean_day_pct": 40.0, "heavy_congestion_on_time_pct": 92.66666666666666}, {"plan": "min_travel", "label": "Fewest miles", "description": "LNS, minimum total travel (proven optimal)", "total_travel_time": 1040.6779999999999, "vehicles_used": 8, "waiting_time": 2236.7509999999997, "service_time": 550.0, "route_duration": 3827.429, "customers_served": 45, "driver_hours": 63.790483333333334, "driver_hours_jit": 48.884966666666664, "longest_day_hours": 9.378683333333333, "shortest_day_hours": 5.9093333333333335, "min_slack": 4.319000000000017, "p10_slack": 33.2, "mean_slack": 73.06022222222221, "avg_load_pct": 87.91666666666667, "max_load_pct": 100.0, "stops_per_truck": 5.625, "base_travel_mean": 1125.7144673931648, "base_travel_p90": 1402.8557625401097, "base_clean_days": 20, "base_late_starts": 19, "base_late_returns": 1, "base_clean_day_pct": 66.66666666666667, "base_on_time_pct": 98.59259259259258, "heavy_congestion_travel_mean": 1337.9136663858876, "heavy_congestion_travel_p90": 1821.5900780020306, "heavy_congestion_clean_days": 14, "heavy_congestion_late_starts": 56, "heavy_congestion_late_returns": 13, "heavy_congestion_clean_day_pct": 46.666666666666664, "heavy_congestion_on_time_pct": 95.85185185185185}, {"plan": "buffer_10", "label": "10-min cushion", "description": "Every stop planned at least 10 min before its window closes", "total_travel_time": 1053.686, "vehicles_used": 9, "waiting_time": 2580.035, "service_time": 550.0, "route_duration": 4183.7210000000005, "customers_served": 45, "driver_hours": 69.72868333333334, "driver_hours_jit": 52.41480000000001, "longest_day_hours": 9.688500000000001, "shortest_day_hours": 5.9785, "min_slack": 11.762999999999977, "p10_slack": 33.2, "mean_slack": 73.8497111111111, "avg_load_pct": 78.14814814814814, "max_load_pct": 96.66666666666667, "stops_per_truck": 5.0, "base_travel_mean": 1138.164404174676, "base_travel_p90": 1431.0963403833596, "base_clean_days": 24, "base_late_starts": 11, "base_late_returns": 4, "base_clean_day_pct": 80.0, "base_on_time_pct": 99.18518518518519, "heavy_congestion_travel_mean": 1352.6921216528908, "heavy_congestion_travel_p90": 1858.2263892946057, "heavy_congestion_clean_days": 17, "heavy_congestion_late_starts": 47, "heavy_congestion_late_returns": 19, "heavy_congestion_clean_day_pct": 56.666666666666664, "heavy_congestion_on_time_pct": 96.51851851851852}, {"plan": "buffer_20", "label": "20-min cushion", "description": "Every stop planned at least 20 min before its window closes", "total_travel_time": 1060.556, "vehicles_used": 8, "waiting_time": 2291.5060000000003, "service_time": 550.0, "route_duration": 3902.0620000000004, "customers_served": 45, "driver_hours": 65.03436666666667, "driver_hours_jit": 50.29441666666666, "longest_day_hours": 9.339333333333334, "shortest_day_hours": 6.965616666666667, "min_slack": 25.818000000000012, "p10_slack": 33.59560000000001, "mean_slack": 77.25857777777777, "avg_load_pct": 87.91666666666667, "max_load_pct": 100.0, "stops_per_truck": 5.625, "base_travel_mean": 1143.9377176455441, "base_travel_p90": 1441.120171357869, "base_clean_days": 27, "base_late_starts": 4, "base_late_returns": 0, "base_clean_day_pct": 90.0, "base_on_time_pct": 99.70370370370371, "heavy_congestion_travel_mean": 1359.451769520948, "heavy_congestion_travel_p90": 1871.2767116669374, "heavy_congestion_clean_days": 18, "heavy_congestion_late_starts": 31, "heavy_congestion_late_returns": 6, "heavy_congestion_clean_day_pct": 60.0, "heavy_congestion_on_time_pct": 97.70370370370371}, {"plan": "buffer_30", "label": "30-min cushion", "description": "Every stop planned at least 30 min before its window closes", "total_travel_time": 1083.051, "vehicles_used": 8, "waiting_time": 2258.9210000000003, "service_time": 550.0, "route_duration": 3891.972, "customers_served": 45, "driver_hours": 64.8662, "driver_hours_jit": 51.981300000000005, "longest_day_hours": 9.378683333333333, "shortest_day_hours": 6.965616666666667, "min_slack": 30.881, "p10_slack": 36.49079999999999, "mean_slack": 80.18913333333333, "avg_load_pct": 87.91666666666667, "max_load_pct": 96.66666666666667, "stops_per_truck": 5.625, "base_travel_mean": 1170.1092016061386, "base_travel_p90": 1457.9713075484738, "base_clean_days": 27, "base_late_starts": 4, "base_late_returns": 1, "base_clean_day_pct": 90.0, "base_on_time_pct": 99.70370370370371, "heavy_congestion_travel_mean": 1390.6119239476566, "heavy_congestion_travel_p90": 1898.6088573653255, "heavy_congestion_clean_days": 18, "heavy_congestion_late_starts": 38, "heavy_congestion_late_returns": 12, "heavy_congestion_clean_day_pct": 60.0, "heavy_congestion_on_time_pct": 97.18518518518519}, {"plan": "spare_cap", "label": "Spare capacity", "description": "Trucks loaded to at most 85%, room for add-on orders", "total_travel_time": 1092.362, "vehicles_used": 9, "waiting_time": 2574.483, "service_time": 550.0, "route_duration": 4216.845, "customers_served": 45, "driver_hours": 70.28075, "driver_hours_jit": 54.93043333333333, "longest_day_hours": 9.378683333333333, "shortest_day_hours": 5.1956, "min_slack": 8.009999999999991, "p10_slack": 35.4, "mean_slack": 74.99564444444444, "avg_load_pct": 78.14814814814814, "max_load_pct": 85.0, "stops_per_truck": 5.0, "base_travel_mean": 1179.9091483857605, "base_travel_p90": 1489.2016476894214, "base_clean_days": 26, "base_late_starts": 6, "base_late_returns": 1, "base_clean_day_pct": 86.66666666666667, "base_on_time_pct": 99.55555555555556, "heavy_congestion_travel_mean": 1402.3807767074986, "heavy_congestion_travel_p90": 1933.6815363538803, "heavy_congestion_clean_days": 20, "heavy_congestion_late_starts": 35, "heavy_congestion_late_returns": 11, "heavy_congestion_clean_day_pct": 66.66666666666667, "heavy_congestion_on_time_pct": 97.4074074074074}, {"plan": "buffer15_spare", "label": "Cushion + spare", "description": "15-min cushion and 85% loading combined", "total_travel_time": 1110.229, "vehicles_used": 10, "waiting_time": 3060.714, "service_time": 550.0, "route_duration": 4720.943, "customers_served": 45, "driver_hours": 78.68238333333333, "driver_hours_jit": 57.988200000000006, "longest_day_hours": 9.339333333333334, "shortest_day_hours": 5.9785, "min_slack": 30.881, "p10_slack": 37.2, "mean_slack": 77.96722222222222, "avg_load_pct": 70.33333333333334, "max_load_pct": 81.66666666666667, "stops_per_truck": 4.5, "base_travel_mean": 1201.1154351318955, "base_travel_p90": 1516.9594469549631, "base_clean_days": 27, "base_late_starts": 4, "base_late_returns": 0, "base_clean_day_pct": 90.0, "base_on_time_pct": 99.70370370370371, "heavy_congestion_travel_mean": 1427.6752227995096, "heavy_congestion_travel_p90": 1969.7668454981904, "heavy_congestion_clean_days": 21, "heavy_congestion_late_starts": 24, "heavy_congestion_late_returns": 5, "heavy_congestion_clean_day_pct": 70.0, "heavy_congestion_on_time_pct": 98.22222222222223}], "routes": {"rule": [{"vehicle_id": "V01", "visits": ["C006", "C044", "C033", "C002", "C012", "C011"], "arrivals": [9.747, 273.438, 421.388, 447.868, 500.975, 551.427], "service_starts": [250.0, 391.0, 421.388, 447.868, 502.0, 551.427], "return_time": 581.179}, {"vehicle_id": "V02", "visits": ["C007", "C015", "C024", "C040", "C021", "C037"], "arrivals": [13.19, 155.097, 330.99, 354.71000000000004, 376.062, 485.763], "service_starts": [130.0, 307.0, 330.99, 354.71000000000004, 455.0, 485.763], "return_time": 531.711}, {"vehicle_id": "V03", "visits": ["C031", "C014", "C028", "C020", "C001"], "arrivals": [17.576, 286.484, 426.181, 456.12399999999997, 489.64], "service_starts": [266.0, 400.0, 426.181, 456.12399999999997, 489.64], "return_time": 549.461}, {"vehicle_id": "V04", "visits": ["C023", "C029", "C010", "C034", "C039"], "arrivals": [22.182, 260.499, 290.97400000000005, 353.0640000000001, 461.74000000000007], "service_starts": [225.0, 260.499, 290.97400000000005, 353.0640000000001, 500.0], "return_time": 560.36}, {"vehicle_id": "V05", "visits": ["C019", "C032", "C043", "C008", "C038"], "arrivals": [24.049, 166.902, 189.76299999999998, 204.373, 348.527], "service_starts": [142.0, 166.902, 189.76299999999998, 315.0, 357.0], "return_time": 412.891}, {"vehicle_id": "V06", "visits": ["C036", "C025", "C022", "C003"], "arrivals": [26.813, 186.404, 313.237, 344.63300000000004], "service_starts": [154.0, 276.0, 313.237, 344.63300000000004], "return_time": 419.05400000000003}, {"vehicle_id": "V07", "visits": ["C004", "C018", "C030", "C016", "C013", "C027", "C005"], "arrivals": [29.342, 145.845, 195.573, 228.517, 325.497, 347.38800000000003, 410.841], "service_starts": [123.0, 156.0, 195.573, 283.0, 325.497, 347.38800000000003, 410.841], "return_time": 479.053}, {"vehicle_id": "V08", "visits": ["C035", "C041", "C026"], "arrivals": [33.009, 268.652, 337.683], "service_starts": [222.0, 268.652, 337.683], "return_time": 412.823}, {"vehicle_id": "V09", "visits": ["C009", "C045"], "arrivals": [41.706, 163.571], "service_starts": [121.0, 167.0], "return_time": 228.46}, {"vehicle_id": "V10", "visits": ["C042"], "arrivals": [48.26], "service_starts": [54.0], "return_time": 107.25999999999999}, {"vehicle_id": "V11", "visits": ["C017"], "arrivals": [68.119], "service_starts": [68.119], "return_time": 150.238}], "min_travel": [{"vehicle_id": "V01", "visits": ["C017", "C018", "C004", "C030", "C024", "C034", "C040", "C020", "C011"], "arrivals": [68.119, 112.605, 179.845, 209.003, 222.04799999999997, 299.413, 355.418, 385.51800000000003, 468.825], "service_starts": [68.119, 156.0, 179.845, 209.003, 268.0, 316.0, 355.418, 443.0, 468.825], "return_time": 498.577}, {"vehicle_id": "V02", "visits": ["C009", "C025", "C022", "C003", "C002", "C033"], "arrivals": [41.706, 135.906, 313.237, 344.63300000000004, 394.60100000000006, 423.0810000000001], "service_starts": [121.0, 276.0, 313.237, 344.63300000000004, 394.60100000000006, 423.0810000000001], "return_time": 452.4030000000001}, {"vehicle_id": "V03", "visits": ["C042", "C041", "C027", "C028", "C014"], "arrivals": [48.26, 69.717, 250.702, 258.153, 393.181], "service_starts": [54.0, 243.0, 250.702, 373.0, 400.0], "return_time": 441.128}, {"vehicle_id": "V04", "visits": ["C007", "C015", "C006"], "arrivals": [13.19, 155.097, 324.813], "service_starts": [130.0, 307.0, 324.813], "return_time": 354.56}, {"vehicle_id": "V05", "visits": ["C013", "C016", "C021", "C001", "C037"], "arrivals": [32.733, 296.497, 317.826, 482.746, 516.773], "service_starts": [263.0, 296.497, 455.0, 482.746, 516.773], "return_time": 562.721}, {"vehicle_id": "V06", "visits": ["C019", "C036", "C023", "C029", "C010", "C044"], "arrivals": [24.049, 174.036, 202.80700000000002, 260.499, 290.97400000000005, 329.15200000000004], "service_starts": [142.0, 174.036, 225.0, 260.499, 290.97400000000005, 391.0], "return_time": 417.937}, {"vehicle_id": "V07", "visits": ["C043", "C032", "C045", "C026", "C005", "C039"], "arrivals": [31.155, 148.861, 177.28, 196.267, 337.445, 399.53], "service_starts": [127.0, 150.0, 177.28, 313.0, 372.0, 500.0], "return_time": 560.36}, {"vehicle_id": "V08", "visits": ["C031", "C035", "C038", "C008", "C012"], "arrivals": [17.576, 287.681, 318.615, 381.527, 422.43899999999996], "service_starts": [266.0, 287.681, 357.0, 381.527, 502.0], "return_time": 539.743}], "buffer_10": [{"vehicle_id": "V01", "visits": ["C017", "C018", "C004", "C030", "C024", "C034", "C040", "C020"], "arrivals": [68.119, 112.605, 179.845, 209.003, 222.04799999999997, 299.413, 355.418, 385.51800000000003], "service_starts": [68.119, 156.0, 179.845, 209.003, 268.0, 316.0, 355.418, 443.0], "return_time": 474.433}, {"vehicle_id": "V02", "visits": ["C032", "C045", "C026", "C005", "C039", "C012"], "arrivals": [36.84, 177.28, 196.267, 337.445, 399.53, 543.567], "service_starts": [150.0, 177.28, 313.0, 372.0, 500.0, 543.567], "return_time": 581.3100000000001}, {"vehicle_id": "V03", "visits": ["C009", "C025", "C022", "C003", "C002", "C033"], "arrivals": [41.706, 135.906, 313.237, 344.63300000000004, 394.60100000000006, 423.0810000000001], "service_starts": [121.0, 276.0, 313.237, 344.63300000000004, 394.60100000000006, 423.0810000000001], "return_time": 452.4030000000001}, {"vehicle_id": "V04", "visits": ["C013", "C016", "C021", "C001", "C037"], "arrivals": [32.733, 296.497, 317.826, 482.746, 516.773], "service_starts": [263.0, 296.497, 455.0, 482.746, 516.773], "return_time": 562.721}, {"vehicle_id": "V05", "visits": ["C036", "C023", "C029", "C010", "C006"], "arrivals": [26.813, 182.77100000000002, 260.499, 290.97400000000005, 328.963], "service_starts": [154.0, 225.0, 260.499, 290.97400000000005, 328.963], "return_time": 358.71000000000004}, {"vehicle_id": "V06", "visits": ["C042", "C041", "C027", "C028", "C014"], "arrivals": [48.26, 69.717, 250.702, 258.153, 393.181], "service_starts": [54.0, 243.0, 250.702, 373.0, 400.0], "return_time": 441.128}, {"vehicle_id": "V07", "visits": ["C019", "C043", "C035", "C038", "C008"], "arrivals": [24.049, 167.298, 188.743, 252.934, 381.527], "service_starts": [142.0, 167.298, 222.0, 357.0, 381.527], "return_time": 432.327}, {"vehicle_id": "V08", "visits": ["C007", "C015", "C044"], "arrivals": [13.19, 155.097, 321.441], "service_starts": [130.0, 307.0, 391.0], "return_time": 417.937}, {"vehicle_id": "V09", "visits": ["C031", "C011"], "arrivals": [17.576, 280.203], "service_starts": [266.0, 433.0], "return_time": 462.752}], "buffer_20": [{"vehicle_id": "V02", "visits": ["C042", "C013", "C016", "C021", "C001"], "arrivals": [48.26, 80.848, 296.497, 317.826, 482.746], "service_starts": [54.0, 263.0, 296.497, 455.0, 482.746], "return_time": 542.567}, {"vehicle_id": "V05", "visits": ["C035", "C043", "C008", "C038", "C011"], "arrivals": [33.009, 248.445, 263.055, 348.527, 398.368], "service_starts": [222.0, 248.445, 315.0, 357.0, 433.0], "return_time": 462.752}, {"vehicle_id": "V06", "visits": ["C009", "C025", "C012"], "arrivals": [41.706, 135.906, 307.967], "service_starts": [121.0, 276.0, 502.0], "return_time": 539.743}, {"vehicle_id": "V07", "visits": ["C007", "C030", "C024", "C034", "C040", "C020", "C037"], "arrivals": [13.19, 168.273, 181.31799999999998, 299.413, 355.418, 385.51800000000003, 458.729], "service_starts": [130.0, 168.273, 268.0, 316.0, 355.418, 443.0, 458.729], "return_time": 504.67699999999996}, {"vehicle_id": "V09", "visits": ["C036", "C023", "C029", "C022", "C003", "C002", "C033"], "arrivals": [26.813, 182.77100000000002, 260.499, 293.732, 325.12800000000004, 375.09600000000006, 403.5760000000001], "service_starts": [154.0, 225.0, 260.499, 293.732, 325.12800000000004, 375.09600000000006, 403.5760000000001], "return_time": 432.8980000000001}, {"vehicle_id": "V10", "visits": ["C019", "C032", "C045", "C026", "C005", "C039"], "arrivals": [24.049, 166.902, 194.182, 213.16899999999998, 337.445, 399.53], "service_starts": [142.0, 166.902, 194.182, 313.0, 372.0, 500.0], "return_time": 560.36}, {"vehicle_id": "V11", "visits": ["C031", "C027", "C041", "C028", "C014"], "arrivals": [17.576, 295.342, 303.044, 309.33599999999996, 393.181], "service_starts": [266.0, 295.342, 303.044, 373.0, 400.0], "return_time": 441.128}, {"vehicle_id": "V12", "visits": ["C017", "C018", "C004", "C010", "C006", "C015", "C044"], "arrivals": [68.119, 112.605, 179.845, 200.865, 281.989, 312.80199999999996, 327.24299999999994], "service_starts": [68.119, 156.0, 179.845, 244.0, 281.989, 312.80199999999996, 391.0], "return_time": 417.937}], "buffer_30": [{"vehicle_id": "V01", "visits": ["C017", "C018", "C004", "C030", "C024", "C034", "C040", "C020"], "arrivals": [68.119, 112.605, 179.845, 209.003, 222.04799999999997, 299.413, 355.418, 385.51800000000003], "service_starts": [68.119, 156.0, 179.845, 209.003, 268.0, 316.0, 355.418, 443.0], "return_time": 474.433}, {"vehicle_id": "V02", "visits": ["C009", "C025", "C012"], "arrivals": [41.706, 135.906, 307.967], "service_starts": [121.0, 276.0, 502.0], "return_time": 539.743}, {"vehicle_id": "V03", "visits": ["C043", "C032", "C045", "C026", "C005", "C039"], "arrivals": [31.155, 148.861, 177.28, 196.267, 337.445, 399.53], "service_starts": [127.0, 150.0, 177.28, 313.0, 372.0, 500.0], "return_time": 560.36}, {"vehicle_id": "V04", "visits": ["C036", "C023", "C029", "C022", "C003", "C002", "C033"], "arrivals": [26.813, 182.77100000000002, 260.499, 293.732, 325.12800000000004, 375.09600000000006, 403.5760000000001], "service_starts": [154.0, 225.0, 260.499, 293.732, 325.12800000000004, 375.09600000000006, 403.5760000000001], "return_time": 432.8980000000001}, {"vehicle_id": "V06", "visits": ["C042", "C041", "C027", "C028", "C014"], "arrivals": [48.26, 69.717, 250.702, 258.153, 393.181], "service_starts": [54.0, 243.0, 250.702, 373.0, 400.0], "return_time": 441.128}, {"vehicle_id": "V07", "visits": ["C019", "C035", "C031", "C008", "C038", "C011"], "arrivals": [24.049, 176.202, 254.681, 291.355, 348.527, 398.368], "service_starts": [142.0, 222.0, 266.0, 315.0, 357.0, 433.0], "return_time": 462.752}, {"vehicle_id": "V08", "visits": ["C013", "C016", "C021", "C001", "C037"], "arrivals": [32.733, 296.497, 317.826, 482.746, 516.773], "service_starts": [263.0, 296.497, 455.0, 482.746, 516.773], "return_time": 562.721}, {"vehicle_id": "V09", "visits": ["C007", "C006", "C010", "C015", "C044"], "arrivals": [13.19, 159.305, 287.989, 330.08599999999996, 344.52699999999993], "service_starts": [130.0, 250.0, 287.989, 330.08599999999996, 391.0], "return_time": 417.937}], "spare_cap": [{"vehicle_id": "V01", "visits": ["C019", "C043", "C035", "C038", "C008"], "arrivals": [24.049, 167.298, 188.743, 252.934, 381.527], "service_starts": [142.0, 167.298, 222.0, 357.0, 381.527], "return_time": 432.327}, {"vehicle_id": "V02", "visits": ["C042", "C041", "C013", "C020"], "arrivals": [48.26, 69.717, 264.18, 283.651], "service_starts": [54.0, 243.0, 264.18, 443.0], "return_time": 474.433}, {"vehicle_id": "V03", "visits": ["C017", "C018", "C004", "C010", "C006"], "arrivals": [68.119, 112.605, 179.845, 200.865, 281.989], "service_starts": [68.119, 156.0, 179.845, 244.0, 281.989], "return_time": 311.736}, {"vehicle_id": "V04", "visits": ["C036", "C023", "C029", "C002", "C033"], "arrivals": [26.813, 182.77100000000002, 260.499, 277.793, 380.48], "service_starts": [154.0, 225.0, 260.499, 352.0, 380.48], "return_time": 409.802}, {"vehicle_id": "V06", "visits": ["C007", "C015", "C024", "C034", "C040", "C044"], "arrivals": [13.19, 155.097, 330.99, 362.403, 401.821, 436.03400000000005], "service_starts": [130.0, 307.0, 330.99, 362.403, 401.821, 436.03400000000005], "return_time": 462.97100000000006}, {"vehicle_id": "V10", "visits": ["C031", "C027", "C028", "C014", "C011"], "arrivals": [17.576, 295.342, 302.793, 393.181, 421.515], "service_starts": [266.0, 295.342, 373.0, 400.0, 433.0], "return_time": 462.752}, {"vehicle_id": "V11", "visits": ["C032", "C045", "C026", "C005", "C039"], "arrivals": [36.84, 177.28, 196.267, 337.445, 399.53], "service_starts": [150.0, 177.28, 313.0, 372.0, 500.0], "return_time": 560.36}, {"vehicle_id": "V12", "visits": ["C009", "C025", "C022", "C003", "C012"], "arrivals": [41.706, 135.906, 313.237, 344.63300000000004, 409.45000000000005], "service_starts": [121.0, 276.0, 313.237, 344.63300000000004, 502.0], "return_time": 539.743}, {"vehicle_id": "V13", "visits": ["C030", "C016", "C021", "C001", "C037"], "arrivals": [32.547, 177.944, 304.329, 482.746, 516.773], "service_starts": [145.0, 283.0, 455.0, 482.746, 516.773], "return_time": 562.721}], "buffer15_spare": [{"vehicle_id": "V01", "visits": ["C007", "C015", "C044"], "arrivals": [13.19, 155.097, 321.441], "service_starts": [130.0, 307.0, 391.0], "return_time": 417.937}, {"vehicle_id": "V02", "visits": ["C032", "C045", "C026", "C005", "C039"], "arrivals": [36.84, 177.28, 196.267, 337.445, 399.53], "service_starts": [150.0, 177.28, 313.0, 372.0, 500.0], "return_time": 560.36}, {"vehicle_id": "V03", "visits": ["C009", "C025", "C012"], "arrivals": [41.706, 135.906, 307.967], "service_starts": [121.0, 276.0, 502.0], "return_time": 539.743}, {"vehicle_id": "V04", "visits": ["C042", "C041", "C027", "C028", "C011"], "arrivals": [48.26, 69.717, 250.702, 258.153, 398.16], "service_starts": [54.0, 243.0, 250.702, 373.0, 433.0], "return_time": 462.752}, {"vehicle_id": "V05", "visits": ["C023", "C029", "C010", "C006"], "arrivals": [22.182, 260.499, 290.97400000000005, 328.963], "service_starts": [225.0, 260.499, 290.97400000000005, 328.963], "return_time": 358.71000000000004}, {"vehicle_id": "V06", "visits": ["C019", "C043", "C035", "C038", "C008"], "arrivals": [24.049, 167.298, 188.743, 252.934, 381.527], "service_starts": [142.0, 167.298, 222.0, 357.0, 381.527], "return_time": 432.327}, {"vehicle_id": "V07", "visits": ["C036", "C022", "C003", "C002", "C033"], "arrivals": [26.813, 186.442, 324.396, 374.36400000000003, 402.84400000000005], "service_starts": [154.0, 293.0, 324.396, 374.36400000000003, 402.84400000000005], "return_time": 432.16600000000005}, {"vehicle_id": "V08", "visits": ["C017", "C018", "C004", "C030", "C024", "C034", "C040", "C037"], "arrivals": [68.119, 112.605, 179.845, 209.003, 222.04799999999997, 299.413, 355.418, 381.118], "service_starts": [68.119, 156.0, 179.845, 209.003, 268.0, 316.0, 355.418, 454.0], "return_time": 499.948}, {"vehicle_id": "V09", "visits": ["C031", "C014", "C020"], "arrivals": [17.576, 286.484, 427.641], "service_starts": [266.0, 400.0, 443.0], "return_time": 474.433}, {"vehicle_id": "V10", "visits": ["C013", "C016", "C021", "C001"], "arrivals": [32.733, 296.497, 317.826, 482.746], "service_starts": [263.0, 296.497, 455.0, 482.746], "return_time": 542.567}]}, "days": {"buffer_20": {"heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1181.5228013343183, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 797.8177413638349, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 2297.6258578025913, "late_service_starts": 7, "late_returns": 3}, {"day_factor": 1.0586025482097687, "travel_time": 1124.9941912269992, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1160.2973281018697, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 1752.5569721671827, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.8664732461496427, "travel_time": 1980.1647668652854, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 1.315578246048823, "travel_time": 1435.48112527629, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.612919701326278, "travel_time": 1728.8087967331633, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.2414340497303822, "travel_time": 1307.0790819876272, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4039406354715958, "travel_time": 1494.2235105738987, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1691853770257028, "travel_time": 1249.6657447349335, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1181.254969070879, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 849.4734713792709, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1248.5782813389942, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9174903604578833, "travel_time": 940.2629567638411, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 903.6756381596684, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 1414.3486584289417, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.214398473605796, "travel_time": 1277.9040926194705, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1986940609669794, "travel_time": 1281.9265329954746, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 1863.7339159896815, "late_service_starts": 4, "late_returns": 0}, {"day_factor": 0.7011735607919364, "travel_time": 781.5393383255754, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 1670.9774534188725, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 0.8104983309710663, "travel_time": 845.0179408102942, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 974.5709987680726, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 1521.380017108903, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.7287123910853608, "travel_time": 1835.8954893283837, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.2023898031467226, "travel_time": 1253.6494369138761, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4294588384562297, "travel_time": 1489.9641032780082, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.8001444597704181, "travel_time": 1939.1618727622397, "late_service_starts": 4, "late_returns": 2}], "base": [{"day_factor": 0.978579722911408, "travel_time": 1052.8553636458184, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 807.7858903545031, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 1645.9595896899582, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 0.9546517845610214, "travel_time": 1014.5240195122057, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1036.1120832224353, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 1378.7827253055334, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.399576943407391, "travel_time": 1484.8286508094586, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.105397080060339, "travel_time": 1206.1438756135017, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 1359.4207484125768, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0629737701866264, "travel_time": 1119.182110410307, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1229.2241805530214, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0208342006656448, "travel_time": 1091.1028795715765, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1056.5100794770344, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 844.8164663839772, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1078.2754549844863, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 888.3366868790088, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 869.7944153730518, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1181.2481744255492, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1102.068442780703, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1110.2294927721628, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 1437.766492993979, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7230197708563071, "travel_time": 805.8894757428307, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 1329.6980815043023, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 0.7972633828435086, "travel_time": 831.2193083071523, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 924.9032536240634, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1245.5155223886627, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 1411.4248029897528, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0403031168427204, "travel_time": 1084.6527583954269, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1218.5572266104127, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3658263806001902, "travel_time": 1471.3032766328772, "late_service_starts": 0, "late_returns": 0}]}, "buffer15_spare": {"base": [{"day_factor": 0.978579722911408, "travel_time": 1112.3915695469445, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 861.2508423906938, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 1748.0488228900156, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 0.9546517845610214, "travel_time": 1053.1985308764072, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1085.5060810244306, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 1435.2192617991554, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.399576943407391, "travel_time": 1572.5897730062547, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.105397080060339, "travel_time": 1256.23700462802, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 1431.4477030659832, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0629737701866264, "travel_time": 1185.0313767231569, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1272.169451771092, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0208342006656448, "travel_time": 1145.3365408431566, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1107.1588168909836, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 889.2108703122874, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1133.3811189095957, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 924.1165699207304, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 919.4158225366403, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1255.183195022327, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1173.5022537285613, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1174.104438405576, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 1512.7246835914975, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7230197708563071, "travel_time": 827.1724016387473, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 1386.8244150626062, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 0.7972633828435086, "travel_time": 852.0104431969729, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 976.63805024929, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1299.72245362862, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 1473.6741392849756, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0403031168427204, "travel_time": 1146.2368141743514, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1268.8872916116445, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3658263806001902, "travel_time": 1555.0723172261528, "late_service_starts": 0, "late_returns": 0}], "heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1248.3348129420008, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 850.6229311857569, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 2440.1341328981384, "late_service_starts": 4, "late_returns": 2}, {"day_factor": 1.0586025482097687, "travel_time": 1167.8799187174025, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1215.611540340065, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 1824.2928908884937, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.8664732461496427, "travel_time": 2097.202838551144, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 1.315578246048823, "travel_time": 1495.0990055808238, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.612919701326278, "travel_time": 1820.4072462581657, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.2414340497303822, "travel_time": 1383.9836337680388, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4039406354715958, "travel_time": 1546.4270345016048, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1691853770257028, "travel_time": 1311.7808302796284, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1237.8839344821786, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 894.1125970537637, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1312.387333875248, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9174903604578833, "travel_time": 978.1342944203662, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 955.2299548951976, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 1502.8735759322617, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.214398473605796, "travel_time": 1360.7352089259546, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1986940609669794, "travel_time": 1355.6797417997736, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 1960.8999876560893, "late_service_starts": 4, "late_returns": 0}, {"day_factor": 0.7011735607919364, "travel_time": 802.1791956794576, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 1742.7657914635656, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 0.8104983309710663, "travel_time": 866.1542183439403, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 1029.0839786073707, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 1587.5930353289455, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7287123910853608, "travel_time": 1916.8656377032762, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.2023898031467226, "travel_time": 1324.8287302430463, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4294588384562297, "travel_time": 1551.5040855864947, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.8001444597704181, "travel_time": 2049.5685660770987, "late_service_starts": 4, "late_returns": 2}]}, "buffer_10": {"base": [{"day_factor": 0.978579722911408, "travel_time": 1060.5358481865242, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 814.4448970539842, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 1637.9532268836615, "late_service_starts": 3, "late_returns": 2}, {"day_factor": 0.9546517845610214, "travel_time": 995.6295878613205, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1040.1695425800044, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 1373.5731423952222, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.399576943407391, "travel_time": 1493.1105178101068, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 1.105397080060339, "travel_time": 1180.1271403765156, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 1350.8854970381126, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0629737701866264, "travel_time": 1119.7986066412964, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1203.0770791494713, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0208342006656448, "travel_time": 1100.3263366867968, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1054.1983431447493, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 834.2931986379245, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1082.0605657464164, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 883.2818041876716, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 870.57917247207, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1189.6588668858788, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1101.2080204007896, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1098.377010339355, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 1429.5310532194312, "late_service_starts": 1, "late_returns": 1}, {"day_factor": 0.7230197708563071, "travel_time": 789.8805571672182, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 1327.720447879071, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 0.7972633828435086, "travel_time": 811.0185139911894, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 915.9853477818083, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1232.9198104195789, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 1416.383042138847, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.0403031168427204, "travel_time": 1086.6958993058583, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1206.3251240007003, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3658263806001902, "travel_time": 1445.1839248587144, "late_service_starts": 0, "late_returns": 0}], "heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1190.1419031819983, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 804.3945753344995, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 2286.4496258185713, "late_service_starts": 9, "late_returns": 3}, {"day_factor": 1.0586025482097687, "travel_time": 1104.042370033055, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1164.8411022047906, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 1745.9351232826698, "late_service_starts": 4, "late_returns": 2}, {"day_factor": 1.8664732461496427, "travel_time": 1991.2094495157776, "late_service_starts": 7, "late_returns": 2}, {"day_factor": 1.315578246048823, "travel_time": 1404.5175452846331, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.612919701326278, "travel_time": 1717.9543076607156, "late_service_starts": 4, "late_returns": 2}, {"day_factor": 1.2414340497303822, "travel_time": 1307.7990803865976, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4039406354715958, "travel_time": 1462.4395493822412, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.1691853770257028, "travel_time": 1260.2295867160378, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1178.6702800246137, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 838.8921946899624, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1252.9612124981531, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9174903604578833, "travel_time": 934.9125991622097, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 904.490964011067, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 1424.4190668793158, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.214398473605796, "travel_time": 1276.9063893571417, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1986940609669794, "travel_time": 1268.2410636295506, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 1853.0585605020506, "late_service_starts": 5, "late_returns": 2}, {"day_factor": 0.7011735607919364, "travel_time": 766.0141329376289, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 1668.4922417419882, "late_service_starts": 2, "late_returns": 2}, {"day_factor": 0.8104983309710663, "travel_time": 824.481803782424, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 965.1741971355216, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 1505.9945288138458, "late_service_starts": 1, "late_returns": 1}, {"day_factor": 1.7287123910853608, "travel_time": 1842.344865072349, "late_service_starts": 4, "late_returns": 2}, {"day_factor": 1.2023898031467226, "travel_time": 1256.0109138308644, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4294588384562297, "travel_time": 1475.0075682888544, "late_service_starts": 1, "late_returns": 1}, {"day_factor": 1.8001444597704181, "travel_time": 1904.7368484276003, "late_service_starts": 5, "late_returns": 2}]}, "spare_cap": {"base": [{"day_factor": 0.978579722911408, "travel_time": 1086.9037116699133, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 845.6891190160015, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 1699.1328424334538, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 0.9546517845610214, "travel_time": 1038.05342482457, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1072.5658048426435, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 1435.1809681890618, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.399576943407391, "travel_time": 1530.1991703928104, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.105397080060339, "travel_time": 1241.796027963643, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 1421.0300873977055, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0629737701866264, "travel_time": 1171.9753151267496, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1245.9364294638372, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0208342006656448, "travel_time": 1122.0940014881835, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1086.7104553715178, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 867.8778594161138, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1106.3249430309395, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 909.790113800404, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 896.0276947221238, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1216.202736927857, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1142.9505305094194, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1136.7680185561444, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 1487.1878238438765, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7230197708563071, "travel_time": 815.1746317167117, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 1369.7609742705797, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 0.7972633828435086, "travel_time": 858.3547609409474, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 952.8021377955965, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1281.3738153417519, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 1465.0775102697173, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0403031168427204, "travel_time": 1123.1544474822922, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1263.8530324689245, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3658263806001902, "travel_time": 1507.3260622993248, "late_service_starts": 0, "late_returns": 0}], "heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1219.7321327651148, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 835.253240847297, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 2371.851398461182, "late_service_starts": 6, "late_returns": 2}, {"day_factor": 1.0586025482097687, "travel_time": 1151.085682202406, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1201.1202819890077, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 1824.2442162625878, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 1.8664732461496427, "travel_time": 2040.6708086124927, "late_service_starts": 6, "late_returns": 2}, {"day_factor": 1.315578246048823, "travel_time": 1477.912209004233, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.612919701326278, "travel_time": 1807.1589082220314, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 1.2414340497303822, "travel_time": 1368.7356193054493, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4039406354715958, "travel_time": 1514.538629355462, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.1691853770257028, "travel_time": 1285.1606042712715, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1215.0211817991344, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 872.6619890909357, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1281.0579055533692, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9174903604578833, "travel_time": 962.9704087105774, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 930.9307860863496, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 1456.200946247419, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.214398473605796, "travel_time": 1325.30894080797, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1986940609669794, "travel_time": 1312.5692429671974, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 1927.7973163590252, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 0.7011735607919364, "travel_time": 790.5439411582254, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 1721.322859990756, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 0.8104983309710663, "travel_time": 872.6038547543094, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 1003.9680663046269, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 1565.1804269519225, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7287123910853608, "travel_time": 1905.6836658411485, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 1.2023898031467226, "travel_time": 1298.1499652814862, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4294588384562297, "travel_time": 1545.3485557144045, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.8001444597704181, "travel_time": 1986.6395163075758, "late_service_starts": 5, "late_returns": 2}]}, "min_travel": {"base": [{"day_factor": 0.978579722911408, "travel_time": 1041.5729646989205, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 797.1926611177739, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 1603.3879462680727, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 0.9546517845610214, "travel_time": 978.1568218910105, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1027.320402724174, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 1354.7609369467716, "late_service_starts": 3, "late_returns": 0}, {"day_factor": 1.399576943407391, "travel_time": 1492.9047329051484, "late_service_starts": 4, "late_returns": 0}, {"day_factor": 1.105397080060339, "travel_time": 1174.2032825012784, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 1326.4785639122285, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.0629737701866264, "travel_time": 1099.1684639297491, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1222.815558692764, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0208342006656448, "travel_time": 1083.0318197344923, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1044.4497329105059, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 823.3364982174553, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1069.457194859946, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 873.4783406340276, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 851.3132876249549, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1181.9098432872677, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1092.4223401616891, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1095.0457246934382, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 1399.6306380549906, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 0.7230197708563071, "travel_time": 782.995934236549, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 1325.5242221861947, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 0.7972633828435086, "travel_time": 815.8791953458967, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 896.2101721764604, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1218.3200303697784, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 1393.153424355452, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.0403031168427204, "travel_time": 1078.335898013799, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1197.095506437971, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.3658263806001902, "travel_time": 1431.8818829061797, "late_service_starts": 1, "late_returns": 0}], "heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1168.8616020188213, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 787.3552335083343, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 2238.1993024072067, "late_service_starts": 9, "late_returns": 4}, {"day_factor": 1.0586025482097687, "travel_time": 1084.6670178055954, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1150.4519035026974, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 1722.0231165426544, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 1.8664732461496427, "travel_time": 1990.9350151437504, "late_service_starts": 7, "late_returns": 2}, {"day_factor": 1.315578246048823, "travel_time": 1397.467319900538, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.612919701326278, "travel_time": 1686.9154105874006, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 1.2414340497303822, "travel_time": 1283.7053893368034, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.4039406354715958, "travel_time": 1486.4333014277795, "late_service_starts": 3, "late_returns": 0}, {"day_factor": 1.1691853770257028, "travel_time": 1240.421770412301, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1167.7706260559212, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 827.8750960521046, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1238.3672652022526, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9174903604578833, "travel_time": 924.5360901610325, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 884.4746124730312, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 1415.1408970856069, "late_service_starts": 3, "late_returns": 0}, {"day_factor": 1.214398473605796, "travel_time": 1266.7189488151873, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1986940609669794, "travel_time": 1264.394594510968, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 1814.2995421804471, "late_service_starts": 5, "late_returns": 1}, {"day_factor": 0.7011735607919364, "travel_time": 759.3375304855413, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 1665.7323343115254, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 0.8104983309710663, "travel_time": 829.4231747398125, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 944.3370851835382, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 1488.1610990229794, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.7287123910853608, "travel_time": 1812.1291919333903, "late_service_starts": 4, "late_returns": 1}, {"day_factor": 1.2023898031467226, "travel_time": 1246.3483643824177, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.4294588384562297, "travel_time": 1463.7222559907166, "late_service_starts": 2, "late_returns": 0}, {"day_factor": 1.8001444597704181, "travel_time": 1887.2049003962804, "late_service_starts": 6, "late_returns": 2}]}, "buffer_30": {"heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1205.1178338930076, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 813.554560879495, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 2323.4256248857005, "late_service_starts": 9, "late_returns": 3}, {"day_factor": 1.0586025482097687, "travel_time": 1142.40333866496, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1190.7255512893948, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 1792.7278647397748, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.8664732461496427, "travel_time": 2058.045082700682, "late_service_starts": 6, "late_returns": 2}, {"day_factor": 1.315578246048823, "travel_time": 1466.387536865647, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.612919701326278, "travel_time": 1745.2623166083117, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.2414340497303822, "travel_time": 1353.698990063192, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4039406354715958, "travel_time": 1535.39126447181, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1691853770257028, "travel_time": 1278.6794402966086, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1213.7910241625318, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 867.1296662041815, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1288.5102789685704, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9174903604578833, "travel_time": 958.1160055297331, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 918.6062122567512, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 1456.27600917317, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.214398473605796, "travel_time": 1320.6080982348221, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1986940609669794, "travel_time": 1298.9912543366281, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 1884.5761954607565, "late_service_starts": 5, "late_returns": 1}, {"day_factor": 0.7011735607919364, "travel_time": 791.097234645609, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 1729.4665132048046, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 0.8104983309710663, "travel_time": 850.1267145080121, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 1003.0069792635375, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 1555.3658591608887, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.7287123910853608, "travel_time": 1890.6171072275595, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.2023898031467226, "travel_time": 1302.536264771662, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.4294588384562297, "travel_time": 1513.5822873566724, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.8001444597704181, "travel_time": 1970.5346086052193, "late_service_starts": 6, "late_returns": 2}], "base": [{"day_factor": 0.978579722911408, "travel_time": 1073.880905054549, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 823.7193299168706, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 1664.4418738695176, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 0.9546517845610214, "travel_time": 1030.2236545616784, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1063.2836098234313, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 1410.3862244321294, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.399576943407391, "travel_time": 1543.2272882468626, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.105397080060339, "travel_time": 1232.112575862708, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 1372.3587068177867, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0629737701866264, "travel_time": 1159.1002514211796, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1263.0908666225846, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0208342006656448, "travel_time": 1116.4351949588975, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1085.6102069269011, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 862.3758659701102, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1112.7608321178243, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 905.2037963161033, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 884.1652022124571, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1216.2654286435682, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1138.8965093318777, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1125.0086212411056, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 1453.845146069955, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7230197708563071, "travel_time": 815.7451639684018, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 1376.241372933651, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 0.7972633828435086, "travel_time": 836.2446588165658, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 951.890031307261, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1273.3388757528257, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 1453.4944356085896, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0403031168427204, "travel_time": 1126.9494572362782, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1237.8732012873559, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3658263806001902, "travel_time": 1495.1067608551414, "late_service_starts": 0, "late_returns": 0}]}, "rule": {"base": [{"day_factor": 0.978579722911408, "travel_time": 1664.6381454149196, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7509241850000141, "travel_time": 1277.9267552915642, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5385864557382285, "travel_time": 2650.649448685614, "late_service_starts": 6, "late_returns": 3}, {"day_factor": 0.9546517845610214, "travel_time": 1610.6911907124409, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9743337070873388, "travel_time": 1637.8443152797515, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2669814679819142, "travel_time": 2176.0384509330424, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 1.399576943407391, "travel_time": 2402.6939655714, "late_service_starts": 5, "late_returns": 2}, {"day_factor": 1.105397080060339, "travel_time": 1852.7573315387679, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2682932384712904, "travel_time": 2178.6258411152635, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.0629737701866264, "travel_time": 1815.702813011788, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1549529002657934, "travel_time": 1949.6965627324705, "late_service_starts": 0, "late_returns": 1}, {"day_factor": 1.0208342006656448, "travel_time": 1717.7397643470727, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9711176149375155, "travel_time": 1668.2959842475116, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7793396471448998, "travel_time": 1355.6874414344572, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.04428723506603, "travel_time": 1697.9129651698581, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866821713212819, "travel_time": 1439.8667233318554, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.8340381591438737, "travel_time": 1385.4169012112532, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.119294010753498, "travel_time": 1884.038601831798, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0473010004832426, "travel_time": 1765.4449281988982, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0381449053766263, "travel_time": 1795.4128582833955, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3195735125330792, "travel_time": 2235.303285006833, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 0.7230197708563071, "travel_time": 1225.4398396836893, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.237339939799433, "travel_time": 2130.496821885604, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 0.7972633828435086, "travel_time": 1344.2602269045203, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.858770899014238, "travel_time": 1447.6021139790337, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1666129288804026, "travel_time": 1970.9605864343166, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.3290231171634905, "travel_time": 2286.4467289926342, "late_service_starts": 3, "late_returns": 2}, {"day_factor": 1.0403031168427204, "travel_time": 1749.4598560852792, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.1690733984199577, "travel_time": 1997.3290162224334, "late_service_starts": 1, "late_returns": 1}, {"day_factor": 1.3658263806001902, "travel_time": 2264.8991875604656, "late_service_starts": 2, "late_returns": 1}], "heavy_congestion": [{"day_factor": 1.0981700767895786, "travel_time": 1868.0703852502168, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7416577144585552, "travel_time": 1262.1570266443887, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 2.1477416865591983, "travel_time": 3700.09127284676, "late_service_starts": 14, "late_returns": 4}, {"day_factor": 1.0586025482097687, "travel_time": 1786.077213118359, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0911143835877128, "travel_time": 1834.1513564396396, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.610447508925868, "travel_time": 2765.9407743460756, "late_service_starts": 8, "late_returns": 3}, {"day_factor": 1.8664732461496427, "travel_time": 3204.2282680837466, "late_service_starts": 12, "late_returns": 4}, {"day_factor": 1.315578246048823, "travel_time": 2205.0422283066105, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.612919701326278, "travel_time": 2770.6120590761825, "late_service_starts": 9, "late_returns": 3}, {"day_factor": 1.2414340497303822, "travel_time": 2120.5370814261228, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.4039406354715958, "travel_time": 2370.017193453928, "late_service_starts": 4, "late_returns": 2}, {"day_factor": 1.1691853770257028, "travel_time": 1967.367680961909, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.0857799944180622, "travel_time": 1865.2760248618179, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.7836357147219428, "travel_time": 1363.1605949986163, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.2092219619352773, "travel_time": 1966.0813404544, "late_service_starts": 1, "late_returns": 1}, {"day_factor": 0.9174903604578833, "travel_time": 1524.031780542987, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.866526563510523, "travel_time": 1439.383238373983, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.3401688288463347, "travel_time": 2255.8235658014896, "late_service_starts": 3, "late_returns": 1}, {"day_factor": 1.214398473605796, "travel_time": 2047.1226753823203, "late_service_starts": 1, "late_returns": 1}, {"day_factor": 1.1986940609669794, "travel_time": 2073.073536326108, "late_service_starts": 1, "late_returns": 0}, {"day_factor": 1.7105238729192118, "travel_time": 2897.5571242553838, "late_service_starts": 8, "late_returns": 4}, {"day_factor": 0.7011735607919364, "travel_time": 1188.412890714822, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.5549147361936893, "travel_time": 2677.3086337944674, "late_service_starts": 8, "late_returns": 2}, {"day_factor": 0.8104983309710663, "travel_time": 1366.5755805955005, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 0.9048873052245111, "travel_time": 1525.3390368250882, "late_service_starts": 0, "late_returns": 0}, {"day_factor": 1.425001588334834, "travel_time": 2407.501148568351, "late_service_starts": 3, "late_returns": 2}, {"day_factor": 1.7287123910853608, "travel_time": 2974.0707598842487, "late_service_starts": 9, "late_returns": 3}, {"day_factor": 1.2023898031467226, "travel_time": 2022.0382481940583, "late_service_starts": 2, "late_returns": 1}, {"day_factor": 1.4294588384562297, "travel_time": 2442.1902161173175, "late_service_starts": 3, "late_returns": 2}, {"day_factor": 1.8001444597704181, "travel_time": 2985.1127363888368, "late_service_starts": 9, "late_returns": 4}]}}}</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById("plan-data").textContent);
+  const plans = DATA.plans;
+  const byKey = Object.fromEntries(plans.map(p => [p.plan, p]));
+  const nodes = DATA.nodes;
+  const nodeById = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const DAYS = 30;
+  const DEFAULTS = { truck: 150, driver: 30, travel: 0.9, late: 75, floor: 0 };
+  const state = { ...DEFAULTS, setting: "base", jit: false, selected: "buffer_20" };
+
+  const $ = id => document.getElementById(id);
+  const fmt$ = v => "$" + Math.round(v).toLocaleString("en-US");
+  const fmt1 = v => v.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const fmt0 = v => Math.round(v).toLocaleString("en-US");
+  const svgNS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const routeColor = k => `var(--r${(k % 8) + 1})`;
+  const routeDash = k => (k >= 8 ? "2.2 1.4" : "none");
+
+  // ---------------------------------------------------------------- tooltip
+  const tip = $("tip");
+  function showTip(html, evt) {
+    tip.innerHTML = html;
+    tip.hidden = false;
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = evt.clientX + pad, y = evt.clientY + pad;
+    if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+    if (y + h > innerHeight - 8) y = evt.clientY - h - pad;
+    tip.style.left = Math.max(8, x) + "px";
+    tip.style.top = Math.max(8, y) + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+
+  // ---------------------------------------------------------------- cost model
+  function costOf(p) {
+    const s = state.setting;
+    const hours = state.jit ? p.driver_hours_jit : p.driver_hours;
+    const lateEvents = (p[`${s}_late_starts`] + p[`${s}_late_returns`]) / DAYS;
+    const parts = {
+      truck: p.vehicles_used * state.truck,
+      driver: hours * state.driver,
+      travel: p[`${s}_travel_mean`] * state.travel,
+      late: lateEvents * state.late,
+    };
+    return { parts, total: parts.truck + parts.driver + parts.travel + parts.late, lateEvents, hours,
+             clean: p[`${s}_clean_days`], ok: p[`${s}_clean_days`] >= state.floor };
+  }
+
+  function renderDecision() {
+    $("o-truck").textContent = fmt$(state.truck);
+    $("o-driver").textContent = fmt$(state.driver);
+    $("o-travel").textContent = "$" + state.travel.toFixed(2);
+    $("o-late").textContent = fmt$(state.late);
+    $("o-floor").textContent = state.floor === 0 ? "no minimum" : `at least ${state.floor} of 30`;
+
+    const scored = plans.map(p => ({ p, c: costOf(p) }));
+    const eligible = scored.filter(x => x.c.ok).sort((a, b) => a.c.total - b.c.total);
+    const best = eligible[0];
+    const rule = scored.find(x => x.p.plan === "rule");
+    const max = Math.max(...scored.map(x => x.c.total));
+
+    const bars = $("bars");
+    bars.replaceChildren();
+    for (const { p, c } of scored) {
+      const row = document.createElement("div");
+      row.className = "bar-row" + (c.ok ? "" : " dim") + (p.plan === state.selected ? " selected" : "");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", `${p.label}: ${fmt$(c.total)} per day. Show this plan.`);
+      const badge = best && p.plan === best.p.plan ? '<span class="badge best">Lowest cost</span>'
+        : !c.ok ? '<span class="badge fail">Below service target</span>' : "";
+      row.innerHTML = `<div class="bar-label">${p.label}<small>${p.vehicles_used} trucks · ${c.clean}/30 clean days</small>${badge}</div>
+        <div class="bar-track"></div><div class="bar-total">${fmt$(c.total)}</div>`;
+      const track = row.querySelector(".bar-track");
+      const parts = [["truck", "Trucks", `${p.vehicles_used} × ${fmt$(state.truck)}`],
+                     ["driver", "Driver hours", `${fmt1(c.hours)} h × ${fmt$(state.driver)}`],
+                     ["travel", "Fuel and wear", `${fmt0(p[state.setting + "_travel_mean"])} min × $${state.travel.toFixed(2)}`],
+                     ["late", "Late events", `${c.lateEvents.toFixed(2)} per day × ${fmt$(state.late)}`]];
+      for (const [k, name, how] of parts) {
+        const seg = document.createElement("div");
+        seg.style.width = (100 * c.parts[k] / max) + "%";
+        seg.style.background = `var(--c-${k})`;
+        seg.addEventListener("mousemove", e => showTip(`<b>${p.label}</b><br>${name}: ${fmt$(c.parts[k])}<br>${how}`, e));
+        seg.addEventListener("mouseleave", hideTip);
+        track.appendChild(seg);
+      }
+      const pick = () => { state.selected = p.plan; renderAll(); };
+      row.addEventListener("click", pick);
+      row.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+      bars.appendChild(row);
+    }
+
+    const v = $("verdict");
+    if (!best) {
+      v.innerHTML = `<strong>No plan meets ${state.floor} clean days</strong><p>Lower the service target, or plan with a larger cushion.</p>`;
+      return;
+    }
+    const save = rule.c.total - best.c.total;
+    const lines = [`<strong>Run “${best.p.label}”: ${fmt$(best.c.total)} a day</strong>`,
+      `<p>${fmt$(save)} a day below today's rule (${(100 * save / rule.c.total).toFixed(0)}%), about ${fmt$(save * 250)} over 250 delivery days. ${best.c.clean} of 30 simulated days had no late stop.</p>`];
+    // Break-even between the two plans a manager is most likely to argue about.
+    const a = scored.find(x => x.p.plan === "min_travel"), b = scored.find(x => x.p.plan === "buffer_20");
+    if (a && b) {
+      const otherA = a.c.total - a.c.parts.late, otherB = b.c.total - b.c.parts.late;
+      const lateGap = a.c.lateEvents - b.c.lateEvents;
+      if (lateGap > 0) {
+        const be = (otherB - otherA) / lateGap;
+        lines.push(be <= 0
+          ? `<p>The 20-min cushion beats fewest miles even with free late deliveries under these settings.</p>`
+          : `<p>Fewest miles vs. 20-min cushion: the cushion wins once a late event costs more than <span class="num">${fmt$(be)}</span>.</p>`);
+      }
+    }
+    v.innerHTML = lines.join("");
+  }
+
+  // ---------------------------------------------------------------- plan detail
+  function renderChips() {
+    const chips = $("chips");
+    chips.replaceChildren();
+    for (const p of plans) {
+      const b = document.createElement("button");
+      b.className = "chip";
+      b.textContent = p.label;
+      b.setAttribute("aria-pressed", String(p.plan === state.selected));
+      b.addEventListener("click", () => { state.selected = p.plan; renderAll(); });
+      chips.appendChild(b);
+    }
+  }
+
+  function stopTip(r, k, evt) {
+    const n = nodeById[r.visits[k]];
+    const start = r.service_starts[k], wait = start - r.arrivals[k];
+    showTip(`<b>${n.id}</b> on ${r.vehicle_id}, stop ${k + 1}<br>Window ${fmt0(n.ws)}–${fmt0(n.we)}<br>Planned start ${fmt1(start)}${wait > 0.05 ? ` (waits ${fmt1(wait)})` : ""}<br>Cushion before close: ${fmt1(n.we - start)} min<br>Demand ${n.demand}`, evt);
+  }
+
+  let highlight = null;
+  function setHighlight(vid) {
+    highlight = vid;
+    document.querySelectorAll("[data-v]").forEach(e => {
+      e.style.opacity = vid && e.dataset.v !== vid ? 0.15 : 1;
+    });
+  }
+
+  function renderMap() {
+    const p = byKey[state.selected];
+    const routes = DATA.routes[p.plan];
+    const map = $("map");
+    map.replaceChildren();
+    // Coordinates run 0-100; flip y so north is up.
+    const X = n => n.x, Y = n => 100 - n.y;
+    const depot = nodes[0];
+    routes.forEach((r, k) => {
+      const pts = [depot, ...r.visits.map(id => nodeById[id]), depot].map(n => `${X(n)},${Y(n)}`).join(" ");
+      const g = el("g", { "data-v": r.vehicle_id }, map);
+      el("polyline", { points: pts, fill: "none", stroke: routeColor(k), "stroke-width": 0.7, "stroke-dasharray": routeDash(k), "stroke-linejoin": "round" }, g);
+      r.visits.forEach((id, i) => {
+        const n = nodeById[id];
+        const c = el("circle", { cx: X(n), cy: Y(n), r: 1.5, fill: routeColor(k), stroke: "var(--panel)", "stroke-width": 0.5 }, g);
+        c.addEventListener("mousemove", e => { setHighlight(r.vehicle_id); stopTip(r, i, e); });
+        c.addEventListener("mouseleave", () => { setHighlight(null); hideTip(); });
+      });
+    });
+    el("rect", { x: X(depot) - 2.2, y: Y(depot) - 2.2, width: 4.4, height: 4.4, fill: "var(--ink)" }, map);
+    $("map-title").textContent = `${p.label}: ${fmt1(p.total_travel_time)} min, ${p.vehicles_used} trucks`;
+  }
+
+  function renderKpis() {
+    const p = byKey[state.selected], base = byKey.rule, s = state.setting;
+    const lateP = p[`${s}_late_starts`] + p[`${s}_late_returns`];
+    const lateB = base[`${s}_late_starts`] + base[`${s}_late_returns`];
+    const hours = x => state.jit ? x.driver_hours_jit : x.driver_hours;
+    // [label, value text, delta vs rule, higher is better?, delta text]
+    const items = [
+      ["Planned travel", `${fmt1(p.total_travel_time)} min`, p.total_travel_time - base.total_travel_time, false, d => `${d > 0 ? "+" : ""}${fmt1(d)} min`],
+      ["Trucks used", `${p.vehicles_used}`, p.vehicles_used - base.vehicles_used, false, d => `${d > 0 ? "+" : ""}${d}`],
+      ["Driver hours", `${fmt1(hours(p))} h`, hours(p) - hours(base), false, d => `${d > 0 ? "+" : ""}${fmt1(d)} h`],
+      ["Smallest cushion", `${fmt1(p.min_slack)} min`, p.min_slack - base.min_slack, true, d => `${d > 0 ? "+" : ""}${fmt1(d)} min`],
+      ["Clean days (of 30)", `${p[`${s}_clean_days`]}`, p[`${s}_clean_days`] - base[`${s}_clean_days`], true, d => `${d > 0 ? "+" : ""}${d}`],
+      ["Late events (30 days)", `${lateP}`, lateP - lateB, false, d => `${d > 0 ? "+" : ""}${d}`],
+    ];
+    $("kpis").innerHTML = items.map(([k, v, d, higherBetter, f]) => {
+      const cls = Math.abs(d) < 1e-9 ? "same" : (d > 0) === higherBetter ? "up" : "down";
+      const txt = p.plan === "rule" ? "baseline" : `${f(d)} vs rule`;
+      return `<div class="kpi"><span class="k">${k}</span><span class="v">${v}</span><span class="d ${cls}">${txt}</span></div>`;
+    }).join("");
+    $("plan-desc").textContent = p.description + ".";
+  }
+
+  function renderTimeline() {
+    const p = byKey[state.selected];
+    const routes = DATA.routes[p.plan];
+    const svg = $("timeline");
+    svg.replaceChildren();
+    const left = 40, right = 10, rowH = 22, top = 18, W = 640;
+    const H = top + routes.length * rowH + 6;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const sx = t => left + (t / 600) * (W - left - right);
+    for (let t = 0; t <= 600; t += 60) {
+      el("line", { x1: sx(t), x2: sx(t), y1: top - 4, y2: H - 4, stroke: "var(--line)", "stroke-width": 1 }, svg);
+      const lab = el("text", { x: sx(t), y: 11, "text-anchor": "middle", "font-size": 9, fill: "var(--muted)", "font-family": "var(--mono)" }, svg);
+      lab.textContent = t;
+    }
+    routes.forEach((r, k) => {
+      const y = top + k * rowH;
+      const g = el("g", { "data-v": r.vehicle_id }, svg);
+      const name = el("text", { x: 0, y: y + 13, "font-size": 10, fill: "var(--ink-2)", "font-family": "var(--mono)" }, g);
+      name.textContent = r.vehicle_id;
+      const shift = DATA.vehicles[r.vehicle_id];
+      let clock = shift.shift_start;
+      r.visits.forEach((id, i) => {
+        const n = nodeById[id];
+        const arr = r.arrivals[i], start = r.service_starts[i], end = start + n.service;
+        // Customer window as a thin outline under the row.
+        el("rect", { x: sx(n.ws), y: y + 15, width: Math.max(0.5, sx(n.we) - sx(n.ws)), height: 3, fill: "none", stroke: "var(--ink-2)", "stroke-width": 0.6 }, g);
+        el("rect", { x: sx(clock), y: y + 4, width: Math.max(0, sx(arr) - sx(clock)), height: 9, fill: "var(--drive)" }, g);
+        if (start > arr) el("rect", { x: sx(arr), y: y + 4, width: sx(start) - sx(arr), height: 9, fill: "var(--wait)" }, g);
+        const svc = el("rect", { x: sx(start), y: y + 2, width: Math.max(1.5, sx(end) - sx(start)), height: 13, fill: routeColor(k), rx: 1.5 }, g);
+        svc.addEventListener("mousemove", e => { setHighlight(r.vehicle_id); stopTip(r, i, e); });
+        svc.addEventListener("mouseleave", () => { setHighlight(null); hideTip(); });
+        clock = end;
+      });
+      el("rect", { x: sx(clock), y: y + 4, width: Math.max(0, sx(r.return_time) - sx(clock)), height: 9, fill: "var(--drive)" }, g);
+      el("line", { x1: sx(r.return_time), x2: sx(r.return_time), y1: y + 1, y2: y + 16, stroke: "var(--ink)", "stroke-width": 1.2 }, g);
+      const hit = el("rect", { x: left, y, width: W - left - right, height: rowH, fill: "transparent" });
+      g.insertBefore(hit, g.firstChild);
+      hit.addEventListener("mousemove", e => { setHighlight(r.vehicle_id); showTip(`<b>${r.vehicle_id}</b>: ${r.visits.length} stops, back at ${fmt1(r.return_time)}`, e); });
+      hit.addEventListener("mouseleave", () => { setHighlight(null); hideTip(); });
+    });
+  }
+
+  // ---------------------------------------------------------------- table
+  function renderTable() {
+    const s = state.setting;
+    const cols = [
+      ["Planned travel (min)", p => p.total_travel_time, "min", fmt1],
+      ["Trucks", p => p.vehicles_used, "min", fmt0],
+      ["Driver hours", p => state.jit ? p.driver_hours_jit : p.driver_hours, "min", fmt1],
+      ["Longest day (h)", p => p.longest_day_hours, "min", fmt1],
+      ["Smallest cushion (min)", p => p.min_slack, "max", fmt1],
+      ["Avg load (%)", p => p.avg_load_pct, null, fmt0],
+      ["Stress travel mean", p => p[`${s}_travel_mean`], "min", fmt0],
+      ["Stress travel P90", p => p[`${s}_travel_p90`], "min", fmt0],
+      ["On-time stops (%)", p => p[`${s}_on_time_pct`], "max", v => v.toFixed(2)],
+      ["Clean days (of 30)", p => p[`${s}_clean_days`], "max", fmt0],
+      ["Late starts", p => p[`${s}_late_starts`], "min", fmt0],
+      ["Late returns", p => p[`${s}_late_returns`], "min", fmt0],
+      ["Cost per day", p => costOf(p).total, "min", fmt$],
+    ];
+    const bestVal = cols.map(([, f, dir]) => dir ? (dir === "min" ? Math.min : Math.max)(...plans.map(f)) : null);
+    const head = `<thead><tr><th>Plan</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead>`;
+    const body = plans.map(p => `<tr><td style="font-family:var(--body)">${p.label}</td>${cols.map(([, f, dir, fm], i) => {
+      const v = f(p);
+      return `<td class="${dir && Math.abs(v - bestVal[i]) < 1e-9 ? "best" : ""}">${fm(v)}</td>`;
+    }).join("")}</tr>`).join("");
+    $("table").innerHTML = head + `<tbody>${body}</tbody>` +
+      `<caption style="caption-side:bottom;text-align:left;padding-top:8px;font-size:0.8rem;color:var(--muted)">Stress columns use the ${s === "base" ? "normal-day" : "heavy-congestion"} simulation. Best value in each column in green.</caption>`;
+  }
+
+  function renderAll() {
+    renderDecision();
+    renderChips();
+    renderMap();
+    renderKpis();
+    renderTimeline();
+    renderTable();
+  }
+
+  // ---------------------------------------------------------------- controls
+  for (const k of ["truck", "driver", "travel", "late", "floor"]) {
+    $(`c-${k}`).addEventListener("input", e => { state[k] = Number(e.target.value); renderAll(); });
+  }
+  const seg = (a, b, apply) => {
+    $(a).addEventListener("click", () => { apply(false); $(a).setAttribute("aria-pressed", "true"); $(b).setAttribute("aria-pressed", "false"); renderAll(); });
+    $(b).addEventListener("click", () => { apply(true); $(b).setAttribute("aria-pressed", "true"); $(a).setAttribute("aria-pressed", "false"); renderAll(); });
+  };
+  seg("cong-base", "cong-heavy", on => { state.setting = on ? "heavy_congestion" : "base"; });
+  seg("clock-shift", "clock-jit", on => { state.jit = on; });
+  $("reset").addEventListener("click", () => {
+    Object.assign(state, DEFAULTS);
+    for (const k of Object.keys(DEFAULTS)) $(`c-${k}`).value = DEFAULTS[k];
+    renderAll();
+  });
+  renderAll();
+})();
+</script>

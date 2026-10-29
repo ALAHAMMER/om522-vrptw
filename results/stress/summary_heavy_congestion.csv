@@ -1,0 +1,4 @@
+method,travel_mean,travel_p90,vehicles_mean,vehicles_p90,scenarios_with_violation,late_service_starts_total,late_returns_total
+lns,1337.9136663858878,1821.5900780020306,8.0,8.0,16,56,13
+lns_buffer15,1343.6960707534531,1844.1171415338235,8.0,8.0,16,62,20
+rule,2162.4783890677913,2975.1749575347076,11.0,11.0,18,99,39

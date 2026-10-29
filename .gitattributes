@@ -1,0 +1,4 @@
+# Keep LF line endings on every machine so the supplied data files stay byte-identical
+* text=auto eol=lf
+*.png binary
+*.parquet binary

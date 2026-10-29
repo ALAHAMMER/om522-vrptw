@@ -1,0 +1,43 @@
+[workspace]
+name = "om522-vrptw"
+version = "1.0.0"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[activation.env]
+PYTHONPATH = "src"
+PYTHONIOENCODING = "utf-8"
+MPLBACKEND = "Agg"
+
+[tasks]
+# pixi run solve <input_dir> <output_dir> [--method lns|rule] [--seed N] [--iterations N]
+solve = "python -m vrptw.cli"
+# pixi run check <input_dir> <decision.json>
+check = "python -m vrptw.checker"
+test = "python -m pytest -q tests"
+# Regenerates every comparison table, stress-test result, and plot in results/
+compare = "python scripts/compare.py"
+# Reruns only the management scenarios (compare already includes them); needs compare first
+scenarios = "python scripts/scenarios.py"
+explore = "marimo edit notebooks/explore.py"
+# Opens the notebook used to record the videos (a note before each cell; buttons run the real commands)
+walkthrough = "marimo edit notebooks/walkthrough.py"
+lint-notebook = "marimo check notebooks/explore.py notebooks/walkthrough.py"
+
+[dependencies]
+python = "3.12.*"
+polars = ">=1.43,<2"
+numpy = ">=2.3,<3"
+matplotlib = ">=3.10,<4"
+marimo = ">=0.24,<0.25"
+pytest = ">=8"
+
+# Optional benchmark environment (needs a personal Gurobi license; never used by solve/test/compare).
+[feature.benchmark.pypi-dependencies]
+gurobipy = ">=13,<14"
+
+[feature.benchmark.tasks]
+gurobi-benchmark = "python scripts/gurobi_benchmark.py"
+
+[environments]
+benchmark = ["benchmark"]

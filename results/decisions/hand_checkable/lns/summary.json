@@ -1,0 +1,18 @@
+{
+  "status": "feasible decision found",
+  "method": "lns",
+  "seed": 522,
+  "restarts": 1,
+  "iterations_per_run": 8000,
+  "iterations_run_total": 8000,
+  "time_cap_seconds": 480.0,
+  "stop_reason": "completed 1 run(s) of 8000 iterations",
+  "start": "rule to beat",
+  "total_travel_time": 329.67,
+  "vehicles_used": 2,
+  "waiting_time": 328.798,
+  "service_time": 66.0,
+  "route_duration": 724.468,
+  "customers_served": 6,
+  "computation_seconds": 0.518217500008177
+}

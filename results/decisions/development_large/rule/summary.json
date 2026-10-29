@@ -1,0 +1,12 @@
+{
+  "status": "feasible decision found",
+  "method": "rule",
+  "stop_reason": "every customer served",
+  "total_travel_time": 3523.223,
+  "vehicles_used": 25,
+  "waiting_time": 5831.633999999997,
+  "service_time": 1483.0,
+  "route_duration": 10837.857000000004,
+  "customers_served": 120,
+  "computation_seconds": 0.0022816999698989093
+}
