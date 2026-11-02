@@ -1,14 +1,15 @@
 # OM 522 Option 3: Delivery Route Planner
 
-> **TEAM: rewrite this paragraph in your own words before submitting (the guide requires it).**
-> Every day a dispatcher at a distributor decides which delivery vehicle serves each customer and
-> in what order the stops are made. Each vehicle leaves the single depot at the start of its shift,
-> carries a limited load, and must be back by the end of the shift, and each customer only accepts a
-> delivery whose service starts inside its time window. This tool reads the day's customer, vehicle,
-> and travel-time files, plans the routes, and reports the total travel time, the number of vehicles
-> used, and the waiting and service consequences. Assumptions added beyond the brief: none. Unused
-> vehicles cost nothing, and the plan minimizes travel time only (vehicles used is reported as the
-> secondary measure, not optimized).
+Our tool helps a delivery dispatcher plan a day's worth of routes. Each morning the dispatcher has a
+list of customers and their locations, each with an order size and a window of time when they can
+take a delivery, along with a set fleet of trucks that each hold a limited load and work a fixed
+shift. The decision is which truck visits each customer and in what order, so that every customer is
+served inside their window and every truck starts and ends at the depot. The tool chooses the plan
+with the least total driving time, and it also reports how many trucks the plan uses. We also looked
+at the plans through other lenses, such as the cost of trucks, drivers, fuel and wear, the cost of a
+late delivery, and how often traffic would make deliveries late. That analysis showed that a slightly
+longer plan with extra cushion in the schedule can be more reliable when traffic is bad. We added one
+assumption: an unused truck costs nothing.
 
 ## Where is everything?
 
@@ -290,7 +291,7 @@ violation, down to 12), at a cost of 20 planned minutes. If late deliveries are 
 
 - Built with **Claude Code (Claude Opus 5.5)** for researching methods, drafting code and tests,
   profiling, and debugging. `AGENT_LOG.md` lists what was wrong in the agent drafts and how it was
-  checked. **TEAM: confirm this sentence before submitting:** every component was reviewed by the team.
+  checked. Every component was reviewed by the team.
 - **Codex** independently reviewed the project, ran algorithm experiments that were not adopted,
   and wrote `scripts/prototype_demo.py` and the guides in `docs/`. It did not change the solver,
   checker, data, or results. `docs/CODEX_CHANGES.md` lists what it added.
