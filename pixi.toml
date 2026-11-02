@@ -22,9 +22,11 @@ scenarios = "python scripts/scenarios.py"
 explore = "marimo edit notebooks/explore.py"
 # Opens the notebook used to record the videos (a note before each cell; buttons run the real commands)
 walkthrough = "marimo edit notebooks/walkthrough.py"
+# One-page screen for the prototype video: buttons run the real commands, code hidden
+video = "marimo run notebooks/prototype_video.py"
 # Short prototype recording: fresh copy, both existing solvers, independent checks, saved comparison.
 prototype-demo = "python scripts/prototype_demo.py"
-lint-notebook = "marimo check notebooks/explore.py notebooks/walkthrough.py"
+lint-notebook = "marimo check notebooks/explore.py notebooks/walkthrough.py notebooks/prototype_video.py"
 
 [dependencies]
 python = "3.12.*"

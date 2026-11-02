@@ -62,7 +62,8 @@ pixi run solve data/option_03/hand_checkable out/hand --method rule   # rule to 
 pixi run check data/option_03/development_medium out/medium/decision.json   # independent checker
 pixi run compare                                                # regenerate every table and plot in results/
 pixi run explore                                                # optional marimo interface
-pixi run walkthrough                                            # the screen we record the videos from
+pixi run video                                                  # one-page screen for the prototype video (buttons run the real commands)
+pixi run walkthrough                                            # detailed step-by-step notebook (code visible)
 pixi run prototype-demo                                         # prototype recording: fresh copy, both methods, checker, comparison
 pixi run prototype-demo --checks-only                           # rehearsal: malformed inputs, edge case, worked example, tests
 ```
