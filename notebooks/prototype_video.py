@@ -454,10 +454,35 @@ def _(mo):
     ## Next · Slower traffic
 
     For the final submission we test how both fixed plans hold up when the data are wrong.
-    **The uncertain input is travel times (traffic).** We will generate **30 traffic days** from a fixed seed,
-    save them to files first, run **both plans unchanged** through the same 30 days, and count
-    **late deliveries and late returns**.
+    **The uncertain input is travel times (traffic).** We have already generated **30 traffic days**
+    from a fixed seed, saved them to files first, run **both plans unchanged** through the same 30 days,
+    and counted **late deliveries and late returns**. Here is a first look; the full study is in the final.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(RESULTS, mo, pl, table):
+    # Preview of the stress test: read the SAVED summary (nothing is re-run on camera).
+    # The CSV keeps full precision; only the screen rounds to one decimal.
+    _summary = (
+        pl.read_csv(RESULTS / "stress" / "summary_base.csv")
+        .filter(pl.col("method").is_in(["rule", "lns"]))
+        .sort("method", descending=True)  # rule first, then LNS
+    )
+    _names = {"rule": "Rule to beat", "lns": "LNS (ours)"}
+    _rows = [
+        [_names[r["method"]], f"{r['travel_mean']:.1f}", f"{r['travel_p90']:.1f}",
+         f"{r['scenarios_with_violation']} of 30", r["late_service_starts_total"], r["late_returns_total"]]
+        for r in _summary.iter_rows(named=True)
+    ]
+    mo.vstack([
+        mo.md("**Preview: normal traffic, `development_medium`, the same 30 saved days for both plans**"),
+        table(["Plan", "Mean travel (min)", "P90 travel (min)", "Days with a late event",
+               "Late deliveries", "Late returns"], _rows),
+        mo.md("*Source: `results/stress/summary_base.csv`, made by `src/vrptw/stress.py`. "
+              "These results come from an assumed traffic model, not real delivery days.*"),
+    ])
     return
 
 
